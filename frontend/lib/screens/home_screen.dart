@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'product_input_page.dart';
+import 'dashboard.dart';
+import 'products.dart';
 import 'analytics.dart';
 import 'alerts.dart';
 import 'profile.dart';
@@ -17,20 +18,40 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int index = 0;
 
-  @override
-  Widget build(BuildContext context) {
+  late final List<Widget> pages;
 
-    final pages = [
-      const ProductInputPage(), // ✅ INPUT FIRST (IMPORTANT)
-       Analytics(),
-       Alerts(),
+  @override
+  void initState() {
+    super.initState();
+
+    /// ✅ SAFE INITIALISATION (BEST PRACTICE)
+    pages = [
+      Dashboard(),
+      ProductPage(),
+      Analytics(),
+      Alerts(),
       ProfilePage(onLogout: widget.onLogout),
     ];
+  }
 
+  void onTabSelected(int i) {
+    setState(() {
+      index = i;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xfff5f6f8),
-      body: pages[index],
 
+      /// 📄 PAGE CONTENT
+      body: IndexedStack(
+        index: index,
+        children: pages,
+      ),
+
+      /// 📱 BOTTOM NAVIGATION
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -41,43 +62,55 @@ class _HomeScreenState extends State<HomeScreen> {
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
               blurRadius: 20,
-            )
+            ),
           ],
         ),
 
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _nav(Icons.input, "Input", 0),       // 🔥 changed
-            _nav(Icons.analytics, "Analytics", 1),
-            _nav(Icons.warning, "Alerts", 2),
-            _nav(Icons.person, "Profile", 3),
+            _navItem(Icons.dashboard, "Home", 0),
+            _navItem(Icons.inventory_2, "Products", 1),
+            _navItem(Icons.analytics, "Analytics", 2),
+            _navItem(Icons.warning, "Alerts", 3),
+            _navItem(Icons.person, "Profile", 4),
           ],
         ),
       ),
     );
   }
 
-  Widget _nav(IconData icon, String label, int i) {
-    bool selected = index == i;
+  /// 📌 NAV ITEM WIDGET (CLEAN + REUSABLE)
+  Widget _navItem(IconData icon, String label, int i) {
+    final selected = index == i;
 
     return GestureDetector(
-      onTap: () => setState(() => index = i),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: selected ? Colors.green : Colors.grey,
-          ),
-          Text(
-            label,
-            style: TextStyle(
+      onTap: () => onTabSelected(i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+        decoration: BoxDecoration(
+          color: selected ? Colors.green.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
               color: selected ? Colors.green : Colors.grey,
-              fontSize: 12,
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.green : Colors.grey,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

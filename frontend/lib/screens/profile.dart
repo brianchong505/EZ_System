@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'edit_profile.dart';
-import 'product_input_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -25,15 +23,14 @@ class _ProfilePageState extends State<ProfilePage> {
     loadProfile();
   }
 
-  // 💾 LOAD DATA
   Future<void> loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
 
     setState(() {
       name = prefs.getString("name") ?? "Tech Startup Inc.";
-      category = prefs.getString("category") ?? "Technology & Software";
-      location = prefs.getString("location") ?? "San Francisco, CA";
-      email = prefs.getString("email") ?? "john@techstartup.com";
+      category = prefs.getString("category") ?? "Technology";
+      location = prefs.getString("location") ?? "Malaysia";
+      email = prefs.getString("email") ?? "user@email.com";
     });
   }
 
@@ -53,13 +50,15 @@ class _ProfilePageState extends State<ProfilePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _profileCard(context),
+            _profileCard(),
+
             const SizedBox(height: 20),
-            _settingsCard(context),
+
+            _editButton(),
 
             const Spacer(),
 
-            _logoutButton(context),
+            _logoutButton(),
           ],
         ),
       ),
@@ -67,158 +66,89 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // 👤 PROFILE CARD
-  Widget _profileCard(BuildContext context) {
+  Widget _profileCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
-        ],
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: const Color(0xff00c853),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.business, color: Colors.white),
-              ),
-
-              const SizedBox(width: 12),
-
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Text(
-                    "Premium Account",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            ],
+          const CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.green,
+            child: Icon(Icons.person, color: Colors.white),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-          _infoRow(Icons.label, "Category", category),
-          _infoRow(Icons.location_on, "Location", location),
-          _infoRow(Icons.person, "Email", email),
+          Text(
+            name,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(email, style: const TextStyle(color: Colors.grey)),
+
+          const SizedBox(height: 12),
+
+          _info("Category", category),
+          _info("Location", location),
         ],
       ),
     );
   }
 
-  // ℹ️ INFO ROW
-  Widget _infoRow(IconData icon, String title, String value) {
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xfff7f8fa),
-        borderRadius: BorderRadius.circular(12),
-      ),
+  Widget _info(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.grey),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+          Text("$title: ",
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(value),
         ],
       ),
     );
   }
 
-  // ⚙️ SETTINGS
-  Widget _settingsCard(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          // ✏️ EDIT PROFILE
-          _settingsItem(
-            icon: Icons.edit,
-            title: "Edit Profile",
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EditProfilePage()),
-              );
-
-              // 🔥 ALWAYS reload after coming back
-              if (result == true || result == null) {
-                loadProfile();
-              }
-            },
+  // ✏️ EDIT PROFILE BUTTON
+  Widget _editButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
+        ),
+        icon: const Icon(Icons.edit),
+        label: const Text("Edit Profile"),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const EditProfilePage(),
+            ),
+          );
 
-          const Divider(),
-
-          // 📥 INPUT DATA
-          _settingsItem(
-            icon: Icons.input,
-            title: "Input Data",
-            subtitle: "Enter product data for AI analysis",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProductInputPage()),
-              );
-            },
-          ),
-        ],
+          if (result == true) {
+            loadProfile(); // refresh after edit
+          }
+        },
       ),
-    );
-  }
-
-  Widget _settingsItem({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.blue),
-      title: Text(title),
-      subtitle: subtitle != null ? Text(subtitle) : null,
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
     );
   }
 
   // 🔴 LOGOUT
-  Widget _logoutButton(BuildContext context) {
+  Widget _logoutButton() {
     return SizedBox(
       width: double.infinity,
       height: 50,

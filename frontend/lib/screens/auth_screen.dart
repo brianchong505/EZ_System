@@ -12,11 +12,25 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   bool isSignUp = false;
 
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final businessController = TextEditingController();
+  final regionController = TextEditingController();
 
   void handleAuth() {
-    // 🔥 later replace with API call (FastAPI login)
+    if (isSignUp) {
+      // 🔥 REGISTER LOGIC (later API call)
+      print("Registering user:");
+      print("Name: ${nameController.text}");
+      print("Email: ${emailController.text}");
+      print("Business: ${businessController.text}");
+      print("Region: ${regionController.text}");
+    } else {
+      // 🔥 LOGIN LOGIC (later API call)
+      print("Logging in user");
+    }
+
     widget.onLogin();
   }
 
@@ -62,14 +76,14 @@ class _AuthScreenState extends State<AuthScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
+                        color: Colors.black12,
                         blurRadius: 20,
                       )
                     ],
                   ),
                   child: Column(
                     children: [
-                      // Toggle
+                      // TOGGLE
                       Row(
                         children: [
                           Expanded(
@@ -89,7 +103,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: TextButton(
                               onPressed: () => setState(() => isSignUp = true),
                               child: Text(
-                                "Sign Up",
+                                "Register",
                                 style: TextStyle(
                                   color:
                                       isSignUp ? Colors.green : Colors.grey,
@@ -101,6 +115,21 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
 
                       const SizedBox(height: 10),
+
+                      // NAME (REGISTER ONLY)
+                      if (isSignUp)
+                        Column(
+                          children: [
+                            TextField(
+                              controller: nameController,
+                              decoration: const InputDecoration(
+                                labelText: "Full Name",
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                        ),
 
                       TextField(
                         controller: emailController,
@@ -120,6 +149,28 @@ class _AuthScreenState extends State<AuthScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+
+                      // BUSINESS NAME (REGISTER ONLY)
+                      if (isSignUp) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: businessController,
+                          decoration: const InputDecoration(
+                            labelText: "Business Name",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        TextField(
+                          controller: regionController,
+                          decoration: const InputDecoration(
+                            labelText: "Region",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 20),
 

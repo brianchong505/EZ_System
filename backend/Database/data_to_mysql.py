@@ -1,6 +1,6 @@
 import pandas as pd
 from sqlalchemy import create_engine
-from backend.Database.data_cleaning import load_and_clean
+from backend.Database.data_cleaning import load_and_clean, load_csv
 
 # -----------------------------
 # DB CONNECTION
@@ -9,12 +9,43 @@ engine = create_engine(
     "mysql+pymysql://root:1234@localhost/ez_system"
 )
 
-# -----------------------------
-# LOAD CLEANED DATA
-# -----------------------------
-users, products, product_cost_history, orders, order_items, reviews, cpi, ppi = load_and_clean()
+print("🚀 Starting data insertion pipeline...")
 
-print("✅ Data loaded from cleaning pipeline")
+
+# -----------------------------
+# LOAD CLEANED DATA (NOW 9 RETURNS)
+# -----------------------------
+(
+    users,
+    products,
+    inventory,   # ⭐ NEW FIX HERE
+    product_cost_history,
+    orders,
+    order_items,
+    reviews,
+    cpi,
+    ppi
+) = load_and_clean()
+
+print("✅ All cleaned data loaded")
+
+
+# -----------------------------
+# LOAD RAW INVENTORY CSV (SAFE)
+# -----------------------------
+inventory = load_csv("inventory.csv")
+
+# -----------------------------
+# CLEAN INVENTORY
+# -----------------------------
+inventory.columns = (
+    inventory.columns.str.lower()
+    .str.strip()
+    .str.replace(" ", "_")
+)
+
+if "product_id" in inventory:
+    inventory["product_id"] = inventory["product_id"].astype(str).str.strip().str.upper()
 
 
 # -----------------------------
@@ -25,44 +56,37 @@ def insert_table(df, table_name):
         print(f"⚠️ Skipping {table_name} (empty)")
         return
 
-    df.to_sql(
-        name=table_name,
-        con=engine,
-        if_exists="append",
-        index=False,
-        method="multi",
-        chunksize=1000
-    )
-    print(f"✅ {table_name} inserted ({len(df)} rows)")
+    try:
+        df.to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="append",
+            index=False,
+            method="multi",
+            chunksize=1000
+        )
+        print(f"✅ {table_name} inserted ({len(df)} rows)")
+
+    except Exception as e:
+        print(f"❌ Error inserting {table_name}: {e}")
 
 
 # -----------------------------
-# INSERT CORE TABLES (ORDER MATTERS)
+# INSERT ORDER (CRITICAL)
 # -----------------------------
 
-# 👤 USERS (must be first because FK dependency)
-#insert_table(users, "users")
-
-# 📦 PRODUCTS
-#insert_table(products, "products")
-
-# 💰 COST HISTORY
+insert_table(users, "users")
+insert_table(products, "products")
 insert_table(product_cost_history, "product_cost_history")
 
-# 🛒 ORDERS
-#insert_table(orders, "orders")
+# ⭐ INVENTORY
+insert_table(inventory, "inventory")
 
-# 📦 ORDER ITEMS
-#insert_table(order_items, "order_items")
+insert_table(orders, "orders")
+insert_table(order_items, "order_items")
+insert_table(reviews, "reviews")
 
-# ⭐ REVIEWS
-#insert_table(reviews, "reviews")
-
-# 📊 CPI
-#insert_table(cpi, "cpi_data")
-
-# 📊 PPI
-#insert_table(ppi, "ppi_data")
-
+insert_table(cpi, "cpi_data")
+insert_table(ppi, "ppi_data")
 
 print("🎉 ALL DATA INSERTION COMPLETED SUCCESSFULLY")

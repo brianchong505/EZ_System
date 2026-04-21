@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # -----------------------------
-# BASE DIRECTORY (FIX PATH ISSUE)
+# BASE DIRECTORY
 # -----------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,16 +20,16 @@ def clean_columns(df):
 
 
 # -----------------------------
-# CLEAN ID (KEEP FORMAT U000 / P000)
+# CLEAN ID (SAFE FOR FK)
 # -----------------------------
 def clean_id(value):
     if pd.isna(value):
-        return value
-    return str(value).strip()
+        return None
+    return str(value).strip().upper()
 
 
 # -----------------------------
-# FIX YEAR → INT
+# FIX YEAR
 # -----------------------------
 def fix_year(df):
     if "year" in df.columns:
@@ -38,7 +38,7 @@ def fix_year(df):
 
 
 # -----------------------------
-# FIX DATE COLUMN
+# FIX DATE
 # -----------------------------
 def fix_date(df, col):
     if col in df.columns:
@@ -59,38 +59,46 @@ def load_csv(file_name):
 
 
 # -----------------------------
-# LOAD + CLEAN DATA
+# LOAD + CLEAN DATASET
 # -----------------------------
 def load_and_clean():
 
     # -----------------------------
-    # LOAD CSV (SAFE PATH)
+    # LOAD CSV FILES
     # -----------------------------
     users = load_csv("users.csv")
     products = load_csv("products.csv")
+    inventory = load_csv("inventory.csv")   # ⭐ NEW
     product_cost_history = load_csv("product_cost_history.csv")
 
     orders = load_csv("orders.csv")
     order_items = load_csv("order_items.csv")
     reviews = load_csv("reviews.csv")
+
     cpi = load_csv("CPI.csv")
     ppi = load_csv("PPI.csv")
 
     # -----------------------------
     # CLEAN COLUMN NAMES
     # -----------------------------
-    users = clean_columns(users)
-    products = clean_columns(products)
-    product_cost_history = clean_columns(product_cost_history)
+    dataframes = [
+        users, products, inventory,
+        product_cost_history,
+        orders, order_items, reviews,
+        cpi, ppi
+    ]
 
-    orders = clean_columns(orders)
-    order_items = clean_columns(order_items)
-    reviews = clean_columns(reviews)
-    cpi = clean_columns(cpi)
-    ppi = clean_columns(ppi)
+    dataframes = [clean_columns(df) for df in dataframes]
+
+    (
+        users, products, inventory,
+        product_cost_history,
+        orders, order_items, reviews,
+        cpi, ppi
+    ) = dataframes
 
     # -----------------------------
-    # SAFE ID CLEANING (WITH CHECKS)
+    # CLEAN IDs
     # -----------------------------
     if "user_id" in users:
         users["user_id"] = users["user_id"].apply(clean_id)
@@ -98,6 +106,9 @@ def load_and_clean():
     if "product_id" in products:
         products["product_id"] = products["product_id"].apply(clean_id)
         products["user_id"] = products["user_id"].apply(clean_id)
+
+    if "product_id" in inventory:
+        inventory["product_id"] = inventory["product_id"].apply(clean_id)
 
     if "product_id" in product_cost_history:
         product_cost_history["product_id"] = product_cost_history["product_id"].apply(clean_id)
@@ -128,21 +139,23 @@ def load_and_clean():
     ppi = fix_year(ppi)
 
     # -----------------------------
-    # CLEAN DATA (SAFE DROP)
+    # CLEAN DATA (SAFE BUT NOT OVER-DESTRUCTIVE)
     # -----------------------------
-    users = users.drop_duplicates().dropna()
-    products = products.drop_duplicates().dropna()
-    product_cost_history = product_cost_history.drop_duplicates().dropna()
+    users = users.drop_duplicates()
+    products = products.drop_duplicates()
+    inventory = inventory.drop_duplicates()
+    product_cost_history = product_cost_history.drop_duplicates()
 
-    orders = orders.drop_duplicates().dropna()
-    order_items = order_items.drop_duplicates().dropna()
-    reviews = reviews.drop_duplicates().dropna()
-    cpi = cpi.drop_duplicates().dropna()
-    ppi = ppi.drop_duplicates().dropna()
+    orders = orders.drop_duplicates()
+    order_items = order_items.drop_duplicates()
+    reviews = reviews.drop_duplicates()
+    cpi = cpi.drop_duplicates()
+    ppi = ppi.drop_duplicates()
 
     return (
         users,
         products,
+        inventory,
         product_cost_history,
         orders,
         order_items,
@@ -160,9 +173,10 @@ if __name__ == "__main__":
 
     print("Users:", len(data[0]))
     print("Products:", len(data[1]))
-    print("Product cost history:", len(data[2]))
-    print("Orders:", len(data[3]))
-    print("Order items:", len(data[4]))
-    print("Reviews:", len(data[5]))
-    print("CPI:", len(data[6]))
-    print("PPI:", len(data[7]))
+    print("Inventory:", len(data[2]))   # ⭐ NEW
+    print("Product cost history:", len(data[3]))
+    print("Orders:", len(data[4]))
+    print("Order items:", len(data[5]))
+    print("Reviews:", len(data[6]))
+    print("CPI:", len(data[7]))
+    print("PPI:", len(data[8]))

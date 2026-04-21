@@ -1,7 +1,7 @@
 from sqlalchemy import text
-from backend.db import get_engine
-from backend.Database.load_data import load_data
-from backend.Database.feature_engineering import build_ai_summary
+from db import get_engine
+from load_data import load_data
+from feature_engineering import build_ai_summary
 import numpy as np
 
 print("🚀 Starting AI Product Summary Pipeline...")
@@ -11,28 +11,28 @@ engine = get_engine()
 # -------------------------
 # LOAD DATA
 # -------------------------
-orders, order_items, reviews, cpi, ppi = load_data()
-print("✅ Data loaded")
+orders, order_items, reviews, cpi, ppi, inventory = load_data()
+print(f"✅ Data loaded | Orders: {len(orders)} | Products in inventory: {len(inventory)}")
 
 # -------------------------
-# BUILD AI FEATURES
+# BUILD FEATURES
 # -------------------------
-df = build_ai_summary(order_items, reviews, cpi, ppi)
-print("✅ Features built")
+df = build_ai_summary(order_items, reviews, cpi, ppi, inventory)
+print(f"✅ Features built | Rows to process: {len(df)}")
+
+if df.empty:
+    print("❌ No data returned from feature engineering. Exiting.")
+    exit()
 
 # -------------------------
-# REMOVE DUPLICATES
+# CLEAN DATA
 # -------------------------
 df = df.drop_duplicates(subset=["product_id"])
-
-# -------------------------
-# FIX NaN → NULL
-# -------------------------
+df["avg_rating"] = df["avg_rating"].fillna(0)  # before replace so fillna catches NaN not None
 df = df.replace({np.nan: None})
-df["avg_rating"] = df["avg_rating"].fillna(0)
 
 # -------------------------
-# FILTER: KEEP ONLY VALID product_ids
+# SAFETY: VALID PRODUCT FILTER
 # -------------------------
 with engine.connect() as conn:
     result = conn.execute(text("SELECT product_id FROM products"))
@@ -40,15 +40,16 @@ with engine.connect() as conn:
 
 before = len(df)
 df = df[df["product_id"].isin(valid_product_ids)]
-after = len(df)
+skipped = before - len(df)
 
-skipped = before - after
 if skipped > 0:
-    print(f"⚠️  Skipped {skipped} rows with product_id not found in products table")
+    print(f"⚠️  Skipped {skipped} products not found in products table")
 
 if df.empty:
-    print("❌ No valid rows to insert. Exiting.")
+    print("❌ No valid products to insert. Exiting.")
     exit()
+
+print(f"✅ Inserting {len(df)} products into ai_product_summary...")
 
 # -------------------------
 # CONVERT TO DICT
@@ -72,7 +73,11 @@ INSERT INTO ai_product_summary (
     avg_rating,
     cpi_value,
     ppi_value,
-    summary_date
+    summary_date,
+    current_stock,
+    stock_status,
+    stock_turnover_rate,
+    stock_risk_level
 )
 VALUES (
     :product_id,
@@ -87,7 +92,11 @@ VALUES (
     :avg_rating,
     :cpi_value,
     :ppi_value,
-    :summary_date
+    :summary_date,
+    :current_stock,
+    :stock_status,
+    :stock_turnover_rate,
+    :stock_risk_level
 )
 ON DUPLICATE KEY UPDATE
     total_sales         = VALUES(total_sales),
@@ -101,13 +110,31 @@ ON DUPLICATE KEY UPDATE
     avg_rating          = VALUES(avg_rating),
     cpi_value           = VALUES(cpi_value),
     ppi_value           = VALUES(ppi_value),
-    summary_date        = VALUES(summary_date)
+    summary_date        = VALUES(summary_date),
+    current_stock       = VALUES(current_stock),
+    stock_status        = VALUES(stock_status),
+    stock_turnover_rate = VALUES(stock_turnover_rate),
+    stock_risk_level    = VALUES(stock_risk_level)
 """)
+
+# DEBUG - check stock columns before insert
+print("Sample data being inserted:")
+for row in data[:3]:
+    print({
+        "product_id":         row.get("product_id"),
+        "current_stock":      row.get("current_stock"),
+        "stock_status":       row.get("stock_status"),
+        "stock_turnover_rate":row.get("stock_turnover_rate"),
+        "stock_risk_level":   row.get("stock_risk_level"),
+    })
 
 # -------------------------
 # INSERT
 # -------------------------
-with engine.begin() as conn:
-    conn.execute(sql, data)
-
-print("✅ AI Summary Pipeline Completed Successfully")
+try:
+    with engine.begin() as conn:
+        conn.execute(sql, data)
+    print(f"🎉 AI Summary Pipeline Completed — {len(df)} products inserted/updated successfully")
+except Exception as e:
+    print(f"❌ Insert failed: {e}")
+    raise

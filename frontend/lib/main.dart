@@ -19,7 +19,7 @@ class EZSystemApp extends StatelessWidget {
   }
 }
 
-/// 🔥 THIS CONTROLS LOGIN FLOW
+/// THIS CONTROLS LOGIN FLOW
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 

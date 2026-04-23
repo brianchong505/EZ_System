@@ -84,17 +84,19 @@ class ApiService {
   }
 
   // --- 4. 更新用户资料 (参数改为 String) ---
-  static Future<bool> updateProfile(
-    String userId,
-    Map<String, dynamic> data,
-  ) async {
+  static Future<bool> updateUserProfile(String userId, Map<String, dynamic> data) async {
+  try {
     final response = await http.put(
       Uri.parse("$baseUrl/users/$userId"),
-      headers: {'Content-Type': 'application/json'},
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode(data),
     );
     return response.statusCode == 200;
+  } catch (e) {
+    print("Update Profile Error: $e");
+    return false;
   }
+}
 
   // --- 5. Dashboard (确保参数也是 String) ---
   // 1. Fetch Dashboard Data (Revenue and Cost)

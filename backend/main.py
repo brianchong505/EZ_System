@@ -103,6 +103,19 @@ async def get_user(user_id: str):
             }
     raise HTTPException(status_code=404, detail="User not found")
 
+@app.put("/users/{user_id}")
+async def update_user(user_id: str, data: dict):
+    try:
+        with engine.begin() as conn:
+            # 这里的字段要和你的数据库匹配，假设只有 name
+            conn.execute(
+                text("UPDATE users SET name = :name WHERE user_id = :uid"),
+                {"name": data['name'], "uid": user_id}
+            )
+        return {"status": "success", "message": "Profile updated"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- 6. PRODUCT ROUTES ---
 
 @app.get("/products/{user_id}")

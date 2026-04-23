@@ -12,9 +12,9 @@ if CURRENT_DIR not in sys.path:
 
 # --- 2. LOCAL IMPORTS ---
 from db import get_engine
-import product_service 
-from dashboard_service import get_user_dashboard_data, get_mock_forecast 
+from services import product_service 
 
+from services.dashboard_service import get_user_dashboard_data, get_mock_forecast 
 app = FastAPI(title="EZ_System SME API")
 engine = get_engine()
 

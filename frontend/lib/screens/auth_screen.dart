@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:async'; // 必须有这个才能使用 TimeoutException
+import 'home_screen.dart';// 路径根据你的实际情况修改
 
 class AuthScreen extends StatefulWidget {
   final VoidCallback onLogin;
@@ -59,10 +60,20 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     if (success) {
+      // 1. 触发 AuthGate 的 login() 方法，改变 isLoggedIn 状态
       widget.onLogin();
-    } else {
-      // 这里的 else 通常只处理一些不抛异常但返回 false 的边缘情况
-      _showError(isSignUp ? "Registration failed" : "Invalid email or password");
+
+      // 2. 🚀 双重保障：如果 AuthGate 没有自动切换，我们手动推一把
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => HomeScreen(onLogout: () {
+            // 这里传一个简单的退出逻辑，或者留空
+            Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+          })),
+          (route) => false,
+        );
+      }
     }
   } catch (e) {
       debugPrint("Auth Error: $e");

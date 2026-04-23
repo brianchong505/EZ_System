@@ -398,19 +398,47 @@ async def delete_account(data: dict):
     user_id = data.get("user_id")
     password = data.get("password")
 
-    with engine.begin() as conn:
-        # 1. 验证密码 (确保使用正确的列名 password_hash)
-        query = text("SELECT password_hash FROM users WHERE user_id = :uid")
-        user = conn.execute(query, {"uid": user_id}).fetchone()
+    try:
+        with engine.begin() as conn:
+            # 1. 验证密码
+            query = text("SELECT password_hash FROM users WHERE user_id = :uid")
+            user = conn.execute(query, {"uid": user_id}).fetchone()
 
-        if not user or user[0] != password:
-            return {"status": "error", "message": "Incorrect password. Authorization failed."}
+            if not user or user[0] != password:
+                return {"status": "error", "message": "Incorrect password."}
 
-        # 2. 执行删除 (级联删除相关产品和销售记录，如果数据库设了 ON DELETE CASCADE 则会自动处理)
-        # 否则需要手动先删除关联表的数据
-        conn.execute(text("DELETE FROM users WHERE user_id = :uid"), {"uid": user_id})
+            # --- 开始清理该用户的所有数据 (顺序非常重要) ---
+
+            # 2. 删除 AI 总结 (引用了 products)
+            # 我们需要通过 product_id 来删，或者如果你的 ai 表有 user_id 更好
+            conn.execute(
+                text("DELETE FROM ai_product_summary WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
+                {"uid": user_id}
+            )
+
+            # 3. 删除销售记录 (引用了 products)
+            conn.execute(
+                text("DELETE FROM sales WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
+                {"uid": user_id}
+            )
+
+            # 4. 删除产品 (引用了 users)
+            conn.execute(
+                text("DELETE FROM products WHERE user_id = :uid"),
+                {"uid": user_id}
+            )
+
+            # 5. 最后，删除用户本人
+            conn.execute(
+                text("DELETE FROM users WHERE user_id = :uid"),
+                {"uid": user_id}
+            )
+            
+        return {"status": "success", "message": "Account and all data deleted."}
         
-    return {"status": "success", "message": "Account deleted successfully"}
+    except Exception as e:
+        print(f"Delete Account Error: {e}")
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

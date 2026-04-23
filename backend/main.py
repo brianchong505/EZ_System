@@ -126,6 +126,25 @@ async def update_product(product_id: str, data: dict):
         raise HTTPException(status_code=400, detail="Update failed")
     return {"status": "success"}
 
+# 在 main.py 中添加这个路由
+@app.delete("/products/{product_id}")
+async def delete_existing_product(product_id: str):
+    try:
+        with engine.begin() as conn:
+            # 1. 先删 stock 表记录（因为它引用了 product_id）
+            conn.execute(text("DELETE FROM stock WHERE product_id = :pid"), {"pid": product_id})
+            
+            # 2. ✅ 新增：先删掉 sales 表中引用了该产品的记录
+            conn.execute(text("DELETE FROM sales WHERE product_id = :pid"), {"pid": product_id})
+            
+            # 3. 最后删 products 表
+            conn.execute(text("DELETE FROM products WHERE product_id = :pid"), {"pid": product_id})
+            
+        return {"status": "success"}
+    except Exception as e:
+        print(f"ERROR: {e}")
+        raise HTTPException(status_code=400, detail=f"Database Error: {str(e)}")
+
 # --- 7. DASHBOARD & SALES ---
 
 # ✅ 必须把这个移到前面！

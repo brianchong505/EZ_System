@@ -85,6 +85,39 @@ class _ProductPageState extends State<ProductPage> {
   }
 }
 
+Future<void> handleDelete(String productId) async {
+  // 弹出确认对话框
+  bool confirm = await showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Delete Product"),
+      content: const Text("Are you sure you want to delete this product? This action cannot be undone."),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false), 
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true), 
+          child: const Text("Delete", style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  ) ?? false;
+
+  if (confirm) {
+    bool success = await ApiService.deleteProduct(productId);
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Product deleted successfully")),
+      );
+      _refresh(); // 重新拉取数据，界面就会消失
+    } else {
+      _showError("Failed to delete product.");
+    }
+  }
+}
+
 void _clearInputs() {
   nameController.clear(); 
   priceController.clear(); 
@@ -229,6 +262,7 @@ void _clearInputs() {
               child: ListTile(
                 title: Text(p.name),
                 subtitle: Text("RM ${p.price.toStringAsFixed(2)} | Stock: ${p.stock}"),
+                // 增加删除按钮
                 trailing: Row(
                 mainAxisSize: MainAxisSize.min, // 关键：让 Row 只占用必要的宽度
                 children: [
@@ -249,6 +283,10 @@ void _clearInputs() {
                     });
                   },
                 )
+                ,IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red), 
+                  onPressed: () => handleDelete(p.id),
+                ),
                 ],
               ),
               )

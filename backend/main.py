@@ -103,6 +103,19 @@ async def get_user(user_id: str):
             }
     raise HTTPException(status_code=404, detail="User not found")
 
+@app.put("/users/{user_id}")
+async def update_user(user_id: str, data: dict):
+    try:
+        with engine.begin() as conn:
+            # 这里的字段要和你的数据库匹配，假设只有 name
+            conn.execute(
+                text("UPDATE users SET name = :name WHERE user_id = :uid"),
+                {"name": data['name'], "uid": user_id}
+            )
+        return {"status": "success", "message": "Profile updated"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- 6. PRODUCT ROUTES ---
 
 @app.get("/products/{user_id}")
@@ -125,6 +138,25 @@ async def update_product(product_id: str, data: dict):
     if not success:
         raise HTTPException(status_code=400, detail="Update failed")
     return {"status": "success"}
+
+# 在 main.py 中添加这个路由
+@app.delete("/products/{product_id}")
+async def delete_existing_product(product_id: str):
+    try:
+        with engine.begin() as conn:
+            # 1. 先删 stock 表记录（因为它引用了 product_id）
+            conn.execute(text("DELETE FROM stock WHERE product_id = :pid"), {"pid": product_id})
+            
+            # 2. ✅ 新增：先删掉 sales 表中引用了该产品的记录
+            conn.execute(text("DELETE FROM sales WHERE product_id = :pid"), {"pid": product_id})
+            
+            # 3. 最后删 products 表
+            conn.execute(text("DELETE FROM products WHERE product_id = :pid"), {"pid": product_id})
+            
+        return {"status": "success"}
+    except Exception as e:
+        print(f"ERROR: {e}")
+        raise HTTPException(status_code=400, detail=f"Database Error: {str(e)}")
 
 # --- 7. DASHBOARD & SALES ---
 
@@ -152,18 +184,31 @@ async def get_dashboard(user_id: str):
             "cost": float(res['cost'] or 0.0)
         }
 
+# 修改售出：减去对应的数量
 @app.post("/sales/record")
 async def record_sale(data: dict):
+    qty = data.get('quantity', 1) # 获取数量，默认为1
     with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE stock SET quantity = quantity - :qty 
+            WHERE product_id = :pid AND quantity >= :qty
+        """), {"pid": data['product_id'], "qty": qty})
+        
+        # 记录销售（如果你的 sales 表需要记录数量，记得加个 quantity 字段）
         conn.execute(text("""
             INSERT INTO sales (user_id, product_id, selling_price, cost_price, sale_date)
             VALUES (:uid, :pid, :price, :cost, NOW())
         """), {"uid": data['user_id'], "pid": data['product_id'], "price": data['price'], "cost": data['cost']})
-        
+    return {"status": "success"}
+
+# 新增补货：直接增加库存
+@app.post("/products/restock")
+async def restock_product(data: dict):
+    with engine.begin() as conn:
         conn.execute(text("""
-            UPDATE stock SET quantity = quantity - 1 
-            WHERE product_id = :pid AND quantity > 0
-        """), {"pid": data['product_id']})
+            UPDATE stock SET quantity = quantity + :adj 
+            WHERE product_id = :pid
+        """), {"pid": data['product_id'], "adj": data['adjustment']})
     return {"status": "success"}
 
 # --- 在 main.py 的路由部分 ---

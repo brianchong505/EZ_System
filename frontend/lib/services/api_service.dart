@@ -184,6 +184,28 @@ class ApiService {
     }
   }
 
+  // 在 lib/services/api_service.dart 中
+
+static Future<bool> updateStock(Map<String, dynamic> data) async {
+  try {
+    final response = await http.post(
+      Uri.parse("$baseUrl/products/restock"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(data),
+    );
+
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      print("Restock Failed: ${response.body}");
+      return false;
+    }
+  } catch (e) {
+    print("API Error (updateStock): $e");
+    return false;
+  }
+}
+
   static Future<bool> deleteProduct(String productId) async {
     final response = await http.delete(
       Uri.parse("$baseUrl/products/$productId"),

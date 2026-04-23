@@ -125,42 +125,115 @@ void _clearInputs() {
 }
 
   Future<void> handleSaleAction(Product p) async {
-  final prefs = await SharedPreferences.getInstance();
-  final userId = prefs.getString('user_id');
+  final int? qty = await showQuantityDialog(context, "Sell Product", "Confirm Sale", Colors.green);
+  if (qty == null || qty <= 0) return;
 
-  if (p.stock <= 0) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Out of stock!")),
-    );
+  if (p.stock < qty) {
+    _showError("Not enough stock!");
     return;
   }
 
+  final prefs = await SharedPreferences.getInstance();
   final data = {
-    "user_id": userId,
+    "user_id": prefs.getString('user_id'),
     "product_id": p.id,
+    "quantity": qty, // ✅ 传给后端你卖了多少个
     "price": p.price,
-    "cost": p.price * 0.6, 
+    "cost": p.price * 0.6,
   };
 
   bool success = await ApiService.recordSale(data);
-
   if (success) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Sold 1 unit of ${p.name}!")),
-    );
-    
-    // ✅ 刷新当前 Product 列表
-    _refresh(); 
-
-    // ✅ 重要：通知 Dashboard 刷新。
-    // 如果你没有使用全局状态管理（Provider），可以通过返回结果通知上一层
-    // 或者在全局设置一个 Flag。
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Failed to record sale.")),
-    );
+    _refresh();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sold $qty units of ${p.name}")));
   }
 }
+
+Future<int?> showQuantityDialog(BuildContext context, String title, String buttonText, Color color) async {
+  int quantity = 1;
+  final TextEditingController controller = TextEditingController(text: "1");
+
+  return showDialog<int>(
+    context: context,
+    builder: (context) => StatefulBuilder( // 必须用 StatefulBuilder 才能在弹窗里刷新数字
+      builder: (context, setDialogState) {
+        return AlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 减号
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                    onPressed: () {
+                      if (quantity > 1) {
+                        setDialogState(() {
+                          quantity--;
+                          controller.text = quantity.toString();
+                        });
+                      }
+                    },
+                  ),
+                  // 数字输入框
+                  SizedBox(
+                    width: 60,
+                    child: TextField(
+                      controller: controller,
+                      textAlign: TextAlign.center,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(border: OutlineInputBorder()),
+                      onChanged: (val) {
+                        quantity = int.tryParse(val) ?? 1;
+                      },
+                    ),
+                  ),
+                  // 加号
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                    onPressed: () {
+                      setDialogState(() {
+                        quantity++;
+                        controller.text = quantity.toString();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: color),
+              onPressed: () => Navigator.pop(context, quantity),
+              child: Text(buttonText, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+Future<void> handleRestock(Product p) async {
+  final int? qty = await showQuantityDialog(context, "Restock Inventory", "Add Stock", Colors.blue);
+  if (qty == null || qty <= 0) return;
+
+  final data = {
+    "product_id": p.id,
+    "adjustment": qty, // ✅ 增加的数量
+  };
+
+  bool success = await ApiService.updateStock(data); // 你需要在 ApiService 增加此方法
+  if (success) {
+    _refresh();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Added $qty units to ${p.name}")));
+  }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +316,6 @@ void _clearInputs() {
           return const Center(child: Text("No products found in database."));
         }
 
-        // Apply Search Filtering
         final filteredList = snapshot.data!.where((p) {
           return p.name.toLowerCase().contains(searchQuery);
         }).toList();
@@ -262,34 +334,43 @@ void _clearInputs() {
               child: ListTile(
                 title: Text(p.name),
                 subtitle: Text("RM ${p.price.toStringAsFixed(2)} | Stock: ${p.stock}"),
-                // 增加删除按钮
+                // ✅ 所有的按钮都放在这一个 Row 的 children 列表里
                 trailing: Row(
-                mainAxisSize: MainAxisSize.min, // 关键：让 Row 只占用必要的宽度
-                children: [
-                  // 1. 售出按钮：点击后 Dashboard 数据才会变
-                  IconButton(
-                    icon: const Icon(Icons.shopping_cart_checkout, color: Colors.green),
-                    onPressed: () => handleSaleAction(p), 
-                    tooltip: "Record a sale",
-                    ),IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue), 
-                  onPressed: () {
-                    setState(() {
-                      editingId = p.id;
-                      nameController.text = p.name;
-                      priceController.text = p.price.toString();
-                      stockController.text = p.stock.toString();
-                      showForm = true;
-                    });
-                  },
-                )
-                ,IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red), 
-                  onPressed: () => handleDelete(p.id),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 1. 补货按钮
+                    IconButton(
+                      icon: const Icon(Icons.add_business, color: Colors.blue),
+                      onPressed: () => handleRestock(p),
+                      tooltip: "Add Stock",
+                    ),
+                    // 2. 售出按钮
+                    IconButton(
+                      icon: const Icon(Icons.shopping_cart_checkout, color: Colors.green),
+                      onPressed: () => handleSaleAction(p),
+                      tooltip: "Record Sale",
+                    ),
+                    // 3. 编辑按钮
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.orange), 
+                      onPressed: () {
+                        setState(() {
+                          editingId = p.id;
+                          nameController.text = p.name;
+                          priceController.text = p.price.toString();
+                          stockController.text = p.stock.toString();
+                          showForm = true;
+                        });
+                      },
+                    ),
+                    // 4. 删除按钮
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red), 
+                      onPressed: () => handleDelete(p.id),
+                    ),
+                  ],
                 ),
-                ],
               ),
-              )
             );
           },
         );

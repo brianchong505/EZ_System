@@ -171,18 +171,31 @@ async def get_dashboard(user_id: str):
             "cost": float(res['cost'] or 0.0)
         }
 
+# 修改售出：减去对应的数量
 @app.post("/sales/record")
 async def record_sale(data: dict):
+    qty = data.get('quantity', 1) # 获取数量，默认为1
     with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE stock SET quantity = quantity - :qty 
+            WHERE product_id = :pid AND quantity >= :qty
+        """), {"pid": data['product_id'], "qty": qty})
+        
+        # 记录销售（如果你的 sales 表需要记录数量，记得加个 quantity 字段）
         conn.execute(text("""
             INSERT INTO sales (user_id, product_id, selling_price, cost_price, sale_date)
             VALUES (:uid, :pid, :price, :cost, NOW())
         """), {"uid": data['user_id'], "pid": data['product_id'], "price": data['price'], "cost": data['cost']})
-        
+    return {"status": "success"}
+
+# 新增补货：直接增加库存
+@app.post("/products/restock")
+async def restock_product(data: dict):
+    with engine.begin() as conn:
         conn.execute(text("""
-            UPDATE stock SET quantity = quantity - 1 
-            WHERE product_id = :pid AND quantity > 0
-        """), {"pid": data['product_id']})
+            UPDATE stock SET quantity = quantity + :adj 
+            WHERE product_id = :pid
+        """), {"pid": data['product_id'], "adj": data['adjustment']})
     return {"status": "success"}
 
 # --- 在 main.py 的路由部分 ---

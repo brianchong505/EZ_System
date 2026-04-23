@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'dart:async'; // 必须有这个才能使用 TimeoutException
 
 class AuthScreen extends StatefulWidget {
   final VoidCallback onLogin;
@@ -19,56 +20,70 @@ class _AuthScreenState extends State<AuthScreen> {
   final businessController = TextEditingController(); // 仅前端填写，暂不传 API
 
   Future<void> handleAuth() async {
-    final email = emailController.text.trim();
-    final password = passwordController.text.trim();
+  final email = emailController.text.trim();
+  final password = passwordController.text.trim();
 
-    // 1. 邮箱验证
-    bool isEmailValid = RegExp(
-      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+"
-    ).hasMatch(email);
+  // 1. 基础验证（保持不变）
+  bool isEmailValid = RegExp(
+    r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+"
+  ).hasMatch(email);
 
-    if (!isEmailValid) {
-      _showError("Email format is invalid");
-      return;
+  if (!isEmailValid) {
+    _showError("Email format is invalid");
+    return;
+  }
+  if (password.length < 8) {
+    _showError("Password must be at least 8 characters");
+    return;
+  }
+  if (isSignUp && businessController.text.isEmpty) {
+    _showError("Please enter your Business Name");
+    return;
+  }
+
+  setState(() => isLoading = true);
+
+  try {
+    bool success = false;
+    if (isSignUp) {
+      // 如果 ApiService 抛出 Exception("Email already registered")
+      // 它会直接跳到下面的 catch 块
+      success = await ApiService.register(
+        email, 
+        password, 
+        businessController.text.trim() 
+      ).timeout(const Duration(seconds: 5));
+    } else {
+      success = await ApiService.login(email, password)
+          .timeout(const Duration(seconds: 5));
     }
 
-    // 2. 密码验证
-    if (password.length < 8) {
-      _showError("Password must be at least 8 characters");
-      return;
+    if (success) {
+      widget.onLogin();
+    } else {
+      // 这里的 else 通常只处理一些不抛异常但返回 false 的边缘情况
+      _showError(isSignUp ? "Registration failed" : "Invalid email or password");
     }
-
-    // 3. 注册时检查 Business Name (虽然不传后端，但前端可以要求必填)
-    if (isSignUp && businessController.text.isEmpty) {
-      _showError("Please enter your Business Name");
-      return;
-    }
-
-    setState(() => isLoading = true);
-
-    try {
-      bool success = false;
-      // --- 修改后的 handleAuth 关键部分 ---
-if (isSignUp) {
-  // ✅ 加上 businessController.text 作为第三个参数
-  success = await ApiService.register(
-    email, 
-    password, 
-    businessController.text.trim() 
-  ).timeout(const Duration(seconds: 5));
-} else {
-  success = await ApiService.login(email, password)
-      .timeout(const Duration(seconds: 5));
-}
-
-      if (success) {
-        widget.onLogin();
-      } else {
-        _showError(isSignUp ? "Registration failed" : "Invalid email or password");
-      }
-    } catch (e) {
+  } catch (e) {
       debugPrint("Auth Error: $e");
-      _showError("Connection error. Check your backend.");
+      
+      String errorMessage;
+
+      // 1. 精准处理超时错误 (需要 import 'dart:async')
+      if (e is TimeoutException) {
+        errorMessage = "Server request timed out. Please check your connection.";
+      } 
+      // 2. 处理网络连接被拒绝 (服务器没开)
+      else if (e.toString().contains("Connection refused") || e.toString().contains("SocketException")) {
+        errorMessage = "Cannot connect to server. Is your backend running?";
+      }
+      // 3. 处理业务逻辑错误 (例如: Email already registered)
+      else {
+        // 去掉 "Exception: " 前缀，只保留核心消息
+        errorMessage = e.toString().replaceAll("Exception: ", "");
+      }
+
+      _showError(errorMessage);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

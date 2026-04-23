@@ -32,33 +32,40 @@ class ApiService {
   }
 
   // --- 2. 注册 (修正类型) ---
-  static Future<bool> register(String email, String password, String businessName) async {
+ static Future<bool> register(String email, String password, String businessName) async {
   try {
+    // 1. 在这里先生成 ID
+    final String generatedUserId = "U${DateTime.now().millisecondsSinceEpoch}";
+
     final response = await http.post(
       Uri.parse("$baseUrl/auth/register"),
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "user_id": "U${DateTime.now().millisecondsSinceEpoch}", // 生成随机ID
+        "user_id": generatedUserId, 
         "email": email,
         "password": password,
-        "business_name": businessName, // ✅ 这里的 Key 必须和后端的 RegisterRequest 一致
+        "business_name": businessName,
       }),
     );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        if (data['user_id'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          // ✅ 关键修正：使用 setString
-          await prefs.setString('user_id', data['user_id'].toString());
-          return true;
-        }
-      }
-      return false;
-    } catch (e) {
-      rethrow;
+    // 2. 检查状态码
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // ✅ 既然后端成功了，我们就把刚才生成的 ID 存起来
+      await prefs.setString('user_id', generatedUserId);
+      await prefs.setString('business_name', businessName); // 顺便存下店名
+      
+      return true;
+    } else {
+      // 3. 如果失败（比如 400），解析后端的错误信息
+      final errorData = jsonDecode(response.body);
+      throw Exception(errorData['detail'] ?? "Registration failed");
     }
+  } catch (e) {
+    rethrow; // 把异常丢给 AuthScreen 处理
   }
+}
 
   // --- 3. 获取用户资料 (参数改为 String) ---
   static Future<Map<String, dynamic>> getUserProfile(String userId) async {

@@ -43,9 +43,19 @@ class RegisterRequest(BaseModel):
 
 @app.post("/auth/register")
 async def register(request: RegisterRequest):
-    """ ✅ 新增注册接口：将 Business Name 存入数据库的 name 字段 """
     try:
         with engine.begin() as conn:
+            # 1. 检查 Email 是否已经存在
+            check_email = conn.execute(
+                text("SELECT user_id FROM users WHERE email = :email"),
+                {"email": request.email}
+            ).fetchone()
+            
+            if check_email:
+                # 这样前端就能收到特定的 "Email already registered" 提示
+                raise HTTPException(status_code=400, detail="Email already registered")
+
+            # 2. 正常插入数据
             conn.execute(text("""
                 INSERT INTO users (user_id, email, password_hash, name) 
                 VALUES (:uid, :email, :pw, :name)
@@ -53,12 +63,16 @@ async def register(request: RegisterRequest):
                 "uid": request.user_id, 
                 "email": request.email, 
                 "pw": request.password, 
-                "name": request.business_name # 关联 Business Name
+                "name": request.business_name
             })
         return {"status": "success"}
+    except HTTPException as e:
+        # 重新抛出已定义的 HTTP 异常（如 Email 已存在）
+        raise e
     except Exception as e:
-        # 如果 ID 或 Email 重复，会报错
-        raise HTTPException(status_code=400, detail=f"Registration failed: {str(e)}")
+        # 处理其他未预见的数据库错误
+        print(f"Register error: {e}")
+        raise HTTPException(status_code=500, detail="Registration failed due to server error")
 
 @app.post("/auth/login")
 def login(request: LoginRequest):

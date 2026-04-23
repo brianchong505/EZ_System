@@ -329,21 +329,28 @@ async def change_password(data: dict):
 @app.post("/users/change-email")
 async def change_email(data: dict):
     user_id = data.get("user_id")
-    password = data.get("password")
+    password = data.get("password")  # 验证身份用的密码
     new_email = data.get("new_email")
-    
+
     with engine.begin() as conn:
-        # 先验证密码
-        user = conn.execute(text("SELECT * FROM users WHERE user_id = :uid AND password = :pwd"), 
-                            {"uid": user_id, "pwd": password}).fetchone()
+        # 1. 验证密码是否正确
+        # 注意：这里也需要使用你刚才确认过的密码列名 password_hash
+        query_check = text("SELECT password_hash FROM users WHERE user_id = :uid")
+        user = conn.execute(query_check, {"uid": user_id}).fetchone()
+
         if not user:
+            return {"status": "error", "message": "User not found"}
+        
+        # 如果输入的密码不匹配数据库里的 password_hash
+        if user[0] != password:
             return {"status": "error", "message": "Verification failed: Incorrect password"}
         
-        # 执行更新
-        conn.execute(text("UPDATE users SET email = :email WHERE user_id = :uid"), 
-                     {"email": new_email, "uid": user_id})
+        # 2. 更新邮箱
+        # 请确保数据库列名是 email，如果不是，请把下面的 :email 改成真实的列名
+        update_query = text("UPDATE users SET email = :email WHERE user_id = :uid")
+        conn.execute(update_query, {"email": new_email, "uid": user_id})
         
-    return {"status": "success"}
+    return {"status": "success", "message": "Email updated successfully"}
 
 class PasswordUpdate(BaseModel):
     user_id: str

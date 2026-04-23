@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from pydantic import BaseModel
 from services.analysis_service import update_ai_summary_table
+from pydantic import BaseModel
 
 # --- 1. PATH FIX ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -299,6 +300,85 @@ async def sync_analytics_data(user_id: str):
     if not success:
         raise HTTPException(status_code=500, detail="Failed to sync analysis data")
     return {"status": "success", "message": "Summary table updated"}
+
+
+@app.post("/users/change-password")
+async def change_password(data: dict):
+    user_id = data.get("user_id")
+    old_password = data.get("old_password")
+    new_password = data.get("new_password")
+
+    with engine.begin() as conn:
+        # 1. 这里的 SELECT 字段要改成 password_hash
+        query_check = text("SELECT password_hash FROM users WHERE user_id = :uid")
+        result = conn.execute(query_check, {"uid": user_id}).fetchone()
+
+        if not result:
+            return {"status": "error", "message": "User not found"}
+        
+        # 注意：这里对比的是数据库取出的第一列
+        if result[0] != old_password:
+            return {"status": "error", "message": "Current password incorrect"}
+
+        # 2. 这里的 SET 字段也要改成 password_hash
+        update_query = text("UPDATE users SET password_hash = :new_pwd WHERE user_id = :uid")
+        conn.execute(update_query, {"new_pwd": new_password, "uid": user_id})
+        
+    return {"status": "success", "message": "Password updated successfully"}
+
+@app.post("/users/change-email")
+async def change_email(data: dict):
+    user_id = data.get("user_id")
+    password = data.get("password")  # 验证身份用的密码
+    new_email = data.get("new_email")
+
+    with engine.begin() as conn:
+        # 1. 验证密码是否正确
+        # 注意：这里也需要使用你刚才确认过的密码列名 password_hash
+        query_check = text("SELECT password_hash FROM users WHERE user_id = :uid")
+        user = conn.execute(query_check, {"uid": user_id}).fetchone()
+
+        if not user:
+            return {"status": "error", "message": "User not found"}
+        
+        # 如果输入的密码不匹配数据库里的 password_hash
+        if user[0] != password:
+            return {"status": "error", "message": "Verification failed: Incorrect password"}
+        
+        # 2. 更新邮箱
+        # 请确保数据库列名是 email，如果不是，请把下面的 :email 改成真实的列名
+        update_query = text("UPDATE users SET email = :email WHERE user_id = :uid")
+        conn.execute(update_query, {"email": new_email, "uid": user_id})
+        
+    return {"status": "success", "message": "Email updated successfully"}
+
+class PasswordUpdate(BaseModel):
+    user_id: str
+    old_password: str
+    new_password: str
+
+@app.post("/users/change-password")
+async def change_password(data: PasswordUpdate):
+    try:
+        with engine.begin() as conn:
+            # 1. 验证旧密码是否匹配
+            user = conn.execute(
+                text("SELECT password FROM users WHERE user_id = :uid"),
+                {"uid": data.user_id}
+            ).fetchone()
+
+            if not user or user[0] != data.old_password:
+                return {"status": "error", "message": "Previous password incorrect"}
+
+            # 2. 执行更新
+            conn.execute(
+                text("UPDATE users SET password = :new_pwd WHERE user_id = :uid"),
+                {"new_pwd": data.new_password, "uid": data.user_id}
+            )
+            return {"status": "success", "message": "Password updated in database"}
+            
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_service.dart';
 import 'edit_profile.dart';
 import 'package:frontend/services/api_service.dart'; 
+import 'security_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -135,7 +136,10 @@ class _ProfilePageState extends State<ProfilePage> {
             );
             if (result == true) loadProfile();
           }),
-          _menuTile(Icons.security, "Security Settings", Colors.orange, () {}),
+          _menuTile(Icons.security, "Security Settings", Colors.orange, () {Navigator.push(
+    context,
+    MaterialPageRoute(builder: (context) => SecurityPage()),
+  );}),
           _menuTile(Icons.help_outline, "Help & Support", Colors.purple, () {}),
         ],
       ),

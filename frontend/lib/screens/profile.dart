@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_service.dart';
 import 'edit_profile.dart';
+import 'package:frontend/services/api_service.dart'; 
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -24,16 +25,44 @@ class _ProfilePageState extends State<ProfilePage> {
     loadProfile();
   }
 
-  Future<void> loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
+  // --- profile.dart ---
 
-    setState(() {
-      name = prefs.getString("name") ?? "Tech Startup Inc.";
-      category = prefs.getString("category") ?? "Technology";
-      location = prefs.getString("location") ?? "Malaysia";
-      email = prefs.getString("email") ?? "user@email.com";
-    });
+Future<void> loadProfile() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString("user_id");
+
+  // 1. 尝试从本地缓存读取（如果有的话）
+  setState(() {
+    name = prefs.getString("name") ?? "Loading...";
+    email = prefs.getString("email") ?? "";
+    category = prefs.getString("category") ?? "N/A";
+    location = prefs.getString("location") ?? "N/A";
+  });
+
+  if (userId != null && userId.isNotEmpty) {
+    try {
+      // 2. 调用 API 获取最新数据
+      final data = await ApiService.getUserProfile(userId);
+      
+      setState(() {
+        // ✅ 这里的 Key 必须和 main.py 返回的一模一样
+        name = data['name'] ?? "No Name Set";
+        email = data['email'] ?? email;
+        category = data['category'] ?? "N/A";
+        location = data['location'] ?? "Unknown";
+      });
+
+      // 3. 将新数据存入本地，下次打开 App 瞬间就能显示
+      await prefs.setString("name", name);
+      await prefs.setString("email", email);
+      await prefs.setString("category", category);
+      await prefs.setString("location", location);
+
+    } catch (e) {
+      print("Profile Sync Error: $e");
+    }
   }
+}
 
   @override
   Widget build(BuildContext context) {

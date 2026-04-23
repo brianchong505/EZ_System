@@ -1,21 +1,23 @@
-class ProductData {
+class Product {
+  final String id;
   final String name;
-  final double cost;
   final double price;
-  final int stock;
-  final int unitsSold;
+  final int stock; // Kept for your separate stock table logic
 
-  ProductData({
+  Product({
+    required this.id,
     required this.name,
-    required this.cost,
     required this.price,
     required this.stock,
-    required this.unitsSold,
   });
 
-  double get revenue => price * unitsSold;
-
-  double get profit => (price - cost) * unitsSold;
-
-  int get remainingStock => stock - unitsSold;
+  factory Product.fromJson(Map<String, dynamic> json) {
+  return Product(
+    id: json['product_id']?.toString() ?? '',
+    name: json['product_name'] ?? '',
+    price: (json['selling_price'] ?? 0.0).toDouble(),
+    // Ensure this matches the 'as stock' alias in your SQL query above
+    stock: (json['stock'] ?? 0).toInt(), 
+  );
+}
 }

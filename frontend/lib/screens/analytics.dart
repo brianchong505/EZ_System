@@ -1,38 +1,33 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:frontend/services/user_service.dart';
-import 'package:http/http.dart' as http;
 
-class Analytics extends StatefulWidget {
+class Analytics extends StatelessWidget {
   const Analytics({super.key});
 
-  @override
-  State<Analytics> createState() => _AnalyticsState();
-}
+  // ===================== MOCK DATA =====================
+  final double revenueBefore = 20000;
+  final double revenueAfter = 24000;
 
-class _AnalyticsState extends State<Analytics> {
-  final String baseUrl = "http://10.0.2.2:8000";
+  final double profitBefore = 5000;
+  final double profitAfter = 10500;
 
-  late Future<Map<String, dynamic>> aiData;
+  final double costBefore = 15000;
+  final double costAfter = 13500;
 
-  @override
-  void initState() {
-    super.initState();
-    aiData = getAI();
-  }
+  final double timeBefore = 5; // hours per week
+  final double timeAfter = 0.5; // 30 mins
 
-  // 📡 CALL AI API
-  Future<Map<String, dynamic>> getAI() async {
-    final userId = await UserService.getUserId();
+  // ===================== CALCULATIONS =====================
+  double get revenueGrowth =>
+      ((revenueAfter - revenueBefore) / revenueBefore) * 100;
 
-    final res = await http.post(
-      Uri.parse("http://10.0.2.2:8000/ai/recommendation"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"user_id": userId}),
-    );
+  double get profitGrowth =>
+      ((profitAfter - profitBefore) / profitBefore) * 100;
 
-    return jsonDecode(res.body);
-  }
+  double get costReduction =>
+      ((costBefore - costAfter) / costBefore) * 100;
+
+  double get timeSaved =>
+      ((timeBefore - timeAfter) / timeBefore) * 100;
 
   @override
   Widget build(BuildContext context) {
@@ -40,125 +35,170 @@ class _AnalyticsState extends State<Analytics> {
       backgroundColor: const Color(0xfff5f6f8),
 
       appBar: AppBar(
-        title: const Text("AI Decision Engine"),
+        title: const Text("Analytics"),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
       ),
 
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: aiData,
-        builder: (context, snapshot) {
-          // 🔄 LOADING
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
-          // ❌ ERROR
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                "Error: ${snapshot.error}",
-                style: const TextStyle(color: Colors.red),
-              ),
-            );
-          }
+            /// ================= AI RECOMMENDATION =================
+            const Text(
+              "🧠 AI Recommendation",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
 
-          final data = snapshot.data!;
+            const SizedBox(height: 10),
 
-          final recommendation = data["recommendation"] ?? "No recommendation";
-          final explanation = data["explanation"] ?? "No explanation";
-          final tradeOff = data["trade_off"] ?? "No trade-off data";
-          final forecast = data["forecast"] ?? "No forecast available";
-          final confidence = data["confidence"] ?? 0;
+            _card(
+              icon: Icons.lightbulb,
+              color: Colors.green,
+              title: "Pricing Strategy",
+              desc:
+                  "Increase high-demand product prices by 3–5% to maximize profit.\n\n"
+                  "Restock fast-moving items to avoid stockouts.",
+            ),
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            const SizedBox(height: 20),
 
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            /// ================= TRADE OFF =================
+            const Text(
+              "⚖️ Trade-Off Analysis",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            Row(
               children: [
-                const Text(
-                  "Z.AI GLM Business Intelligence",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: _smallCard(
+                    title: "Price vs Demand",
+                    value: "Balanced ↑",
+                    color: Colors.blue,
+                  ),
                 ),
-
-                const SizedBox(height: 20),
-
-                // 💡 RECOMMENDATION
-                _card(
-                  title: "Recommendation",
-                  content: recommendation,
-                  icon: Icons.lightbulb,
-                  color: Colors.green,
-                ),
-
-                const SizedBox(height: 12),
-
-                // 🧠 EXPLANATION
-                _card(
-                  title: "Explanation",
-                  content: explanation,
-                  icon: Icons.psychology,
-                  color: Colors.blue,
-                ),
-
-                const SizedBox(height: 12),
-
-                // ⚖️ TRADE OFF
-                _card(
-                  title: "Trade-Off Analysis",
-                  content: tradeOff,
-                  icon: Icons.balance,
-                  color: Colors.orange,
-                ),
-
-                const SizedBox(height: 12),
-
-                // 🔮 FORECAST
-                _card(
-                  title: "Forecast",
-                  content: forecast,
-                  icon: Icons.trending_up,
-                  color: Colors.purple,
-                ),
-
-                const SizedBox(height: 12),
-
-                // 🎯 CONFIDENCE
-                _card(
-                  title: "Confidence Score",
-                  content: "${(confidence * 100).toStringAsFixed(1)}%",
-                  icon: Icons.verified,
-                  color: Colors.teal,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _smallCard(
+                    title: "Cost vs Profit",
+                    value: "Optimized ↑",
+                    color: Colors.green,
+                  ),
                 ),
               ],
             ),
-          );
-        },
+
+            const SizedBox(height: 20),
+
+            /// ================= EXPLANATION =================
+            const Text(
+              "📉 GLM Reasoning",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            _card(
+              icon: Icons.psychology,
+              color: Colors.blue,
+              title: "AI Explanation",
+              desc:
+                  "Cost increased due to inflation, but demand remains strong.\n"
+                  "Recommended price adjustment: +8% to maintain margin stability.",
+            ),
+
+            const SizedBox(height: 20),
+
+            /// ================= FORECAST =================
+            const Text(
+              "📈 Forecast",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _smallCard(
+                    title: "Revenue",
+                    value: "+20% ↑",
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _smallCard(
+                    title: "Demand",
+                    value: "+15% ↑",
+                    color: Colors.blue,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _smallCard(
+                    title: "Profit",
+                    value: "+110% ↑",
+                    color: Colors.purple,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            /// ================= IMPACT ANALYSIS =================
+            const Text(
+              "📈 Impact Analysis",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            _impactCard(
+              title: "💥 AI Impact Summary",
+              items: [
+                _impactItem("💰 Revenue", revenueBefore, revenueAfter,
+                    "+${revenueGrowth.toStringAsFixed(0)}%"),
+                _impactItem("💵 Profit", profitBefore, profitAfter,
+                    "+${profitGrowth.toStringAsFixed(0)}%"),
+                _impactItem("💸 Cost", costBefore, costAfter,
+                    "-${costReduction.toStringAsFixed(0)}%"),
+                _impactItem("⏱ Time Saved", timeBefore, timeAfter,
+                    "-${timeSaved.toStringAsFixed(0)}%"),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // 🧠 REUSABLE CARD
+  // ================= CARD =================
   Widget _card({
-    required String title,
-    required String content,
     required IconData icon,
     required Color color,
+    required String title,
+    required String desc,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+          )
         ],
       ),
-
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -170,36 +210,102 @@ class _AnalyticsState extends State<Analytics> {
             ),
             child: Icon(icon, color: color),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 6),
-
-                Text(
-                  content,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black87,
-                    height: 1.4,
-                  ),
-                ),
+                Text(desc,
+                    style: const TextStyle(
+                        color: Colors.black87, fontSize: 13, height: 1.4)),
               ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // ================= SMALL CARD =================
+  Widget _smallCard({
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
         ],
       ),
     );
   }
+
+  // ================= IMPACT CARD =================
+  Widget _impactCard({
+    required String title,
+    required List<Widget> items,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE0F2FE), Color(0xFFEEF2FF)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 10),
+          ...items,
+        ],
+      ),
+    );
+  }
+
+  Widget _impactItem(
+    String label,
+    double before,
+    double after,
+    String change,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Text(
+            "$before → $after  ($change)",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

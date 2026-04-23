@@ -1,386 +1,271 @@
 import 'package:flutter/material.dart';
-
-class Product {
-  String id;
-  String name;
-  double cost;
-  double price;
-  int stock;
-  int sold;
-
-  Product({
-    required this.id,
-    required this.name,
-    required this.cost,
-    required this.price,
-    required this.stock,
-    required this.sold,
-  });
-}
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import '../models/product.dart'; // ✅ Ensure this path is correct
 
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
-
   @override
   State<ProductPage> createState() => _ProductPageState();
 }
 
 class _ProductPageState extends State<ProductPage> {
-  List<Product> products = [];
-
+  late Future<List<Product>> _productsFuture;
+  
+  // Controllers for the Form
   final nameController = TextEditingController();
-  final costController = TextEditingController();
   final priceController = TextEditingController();
   final stockController = TextEditingController();
-  final soldController = TextEditingController();
+  
+  // Controller and variable for Search
+  final searchController = TextEditingController();
+  String searchQuery = ""; 
 
   String? editingId;
   bool showForm = false;
 
-  void resetForm() {
-    nameController.clear();
-    costController.clear();
-    priceController.clear();
-    stockController.clear();
-    soldController.clear();
-    editingId = null;
-    showForm = false;
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
   }
 
-  void saveProduct() {
-    final name = nameController.text.trim();
-    final cost = double.tryParse(costController.text);
-    final price = double.tryParse(priceController.text);
-    final stock = int.tryParse(stockController.text);
-    final sold = int.tryParse(soldController.text);
+  // Fetches data from API and returns it as a Future
+  Future<List<Product>> _fetchProducts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id') ?? "";
+    return await ApiService.getProducts(userId);
+  }
 
-    // ❌ VALIDATION 1: empty fields
-    if (name.isEmpty ||
-        cost == null ||
-        price == null ||
-        stock == null ||
-        sold == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("❌ Invalid input: Please fill all fields correctly"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // ❌ VALIDATION 2: sold cannot exceed stock
-    if (sold > stock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("❌ Units sold cannot be more than stock"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // ❌ VALIDATION 3: negative values
-    if (cost < 0 || price < 0 || stock < 0 || sold < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("❌ Values cannot be negative"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final product = Product(
-      id: editingId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      cost: cost,
-      price: price,
-      stock: stock,
-      sold: sold,
-    );
-
+  void _refresh() {
     setState(() {
-      if (editingId != null) {
-        products = products
-            .map((p) => p.id == editingId ? product : p)
-            .toList();
-      } else {
-        products.add(product);
-      }
+      _productsFuture = _fetchProducts();
     });
+  }
 
+  Future<void> handleSave() async {
+  final prefs = await SharedPreferences.getInstance();
+  final String? userId = prefs.getString('user_id'); // 获取当前登录的新 ID
+
+  if (userId == null) {
+    _showError("User not logged in. Please re-login.");
+    return;
+  }
+
+  final double? price = double.tryParse(priceController.text.trim());
+  final int? stock = int.tryParse(stockController.text.trim());
+
+  if (price == null || stock == null || nameController.text.isEmpty) {
+    _showError("Please fill all fields with valid data");
+    return;
+  }
+
+  final data = {
+    "user_id": userId, // ✅ 确保使用最新 U177... ID
+    "product_id": editingId ?? "P${DateTime.now().millisecondsSinceEpoch}",
+    "product_name": nameController.text.trim(),
+    "selling_price": price,
+    "stock": stock,
+  };
+
+  bool success = editingId != null 
+      ? await ApiService.updateProduct(data) 
+      : await ApiService.addProduct(data);
+
+  if (success) {
+    _refresh();
+    setState(() { 
+      showForm = false; 
+      editingId = null; 
+    });
+    // 清空控制器
+    _clearInputs();
+  } else {
+    _showError("Failed to save product. Check backend logs.");
+  }
+}
+
+void _clearInputs() {
+  nameController.clear(); 
+  priceController.clear(); 
+  stockController.clear();
+}
+
+  Future<void> handleSaleAction(Product p) async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('user_id');
+
+  if (p.stock <= 0) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          editingId != null
-              ? "✅ Product updated successfully"
-              : "✅ Product added successfully",
-        ),
-        backgroundColor: Colors.green,
-      ),
+      const SnackBar(content: Text("Out of stock!")),
     );
-
-    resetForm();
+    return;
   }
 
-  void editProduct(Product p) {
-    setState(() {
-      nameController.text = p.name;
-      costController.text = p.cost.toString();
-      priceController.text = p.price.toString();
-      stockController.text = p.stock.toString();
-      soldController.text = p.sold.toString();
-      editingId = p.id;
-      showForm = true;
-    });
+  final data = {
+    "user_id": userId,
+    "product_id": p.id,
+    "price": p.price,
+    "cost": p.price * 0.6, 
+  };
+
+  bool success = await ApiService.recordSale(data);
+
+  if (success) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Sold 1 unit of ${p.name}!")),
+    );
+    
+    // ✅ 刷新当前 Product 列表
+    _refresh(); 
+
+    // ✅ 重要：通知 Dashboard 刷新。
+    // 如果你没有使用全局状态管理（Provider），可以通过返回结果通知上一层
+    // 或者在全局设置一个 Flag。
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Failed to record sale.")),
+    );
   }
-
-  void deleteProduct(String id) {
-    setState(() {
-      products.removeWhere((p) => p.id == id);
-    });
-  }
-
-  String stockStatus(int stock) {
-    if (stock < 20) return "Low";
-    if (stock < 50) return "Medium";
-    return "High";
-  }
-
-  Color stockColor(String status) {
-    switch (status) {
-      case "Low":
-        return Colors.red;
-      case "Medium":
-        return Colors.orange;
-      default:
-        return Colors.green;
-    }
-  }
-
-  double profit(Product p) => (p.price - p.cost) * p.sold;
-
-  double margin(Product p) => ((p.price - p.cost) / p.price) * 100;
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-
-      appBar: AppBar(
-        title: const Text("Products"),
-        centerTitle: true,
-        backgroundColor: const Color.fromARGB(255, 30, 175, 42),
-      ),
-
+      appBar: AppBar(title: const Text("Inventory"), backgroundColor: Colors.green),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color.fromARGB(255, 59, 175, 30),
         onPressed: () {
-          setState(() => showForm = !showForm);
+          setState(() {
+            showForm = !showForm;
+            if (!showForm) editingId = null; // Reset edit state if closing
+          });
         },
         child: Icon(showForm ? Icons.close : Icons.add),
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            /// 📦 FORM SECTION
-            if (showForm)
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(
-                          labelText: "Product Name",
-                        ),
-                      ),
-
-                      TextField(
-                        controller: costController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Cost Price",
-                        ),
-                      ),
-
-                      TextField(
-                        controller: priceController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Selling Price",
-                        ),
-                      ),
-
-                      TextField(
-                        controller: stockController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: "Stock"),
-                      ),
-
-                      TextField(
-                        controller: soldController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Units Sold",
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: saveProduct,
-                              child: Text(
-                                editingId != null ? "Update" : "Save",
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          TextButton(
-                            onPressed: resetForm,
-                            child: const Text("Cancel"),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+            // Search Bar
+            TextField(
+              controller: searchController,
+              decoration: const InputDecoration(
+                labelText: "Search products...",
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
               ),
-
+              onChanged: (value) {
+                setState(() {
+                  searchQuery = value.toLowerCase();
+                });
+              },
+            ),
+            const SizedBox(height: 10),
+            if (showForm) _buildForm(),
             const SizedBox(height: 20),
-
-            /// 📋 PRODUCT LIST
-            if (products.isEmpty) const Text("No products yet"),
-
-            ...products.map((p) {
-              final status = stockStatus(p.stock);
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// NAME + ACTIONS
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            p.name,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.edit,
-                                  color: Colors.green,
-                                ),
-                                onPressed: () => editProduct(p),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.red,
-                                ),
-                                onPressed: () => deleteProduct(p.id),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      /// STOCK STATUS
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: stockColor(status).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          "Stock: $status",
-                          style: TextStyle(color: stockColor(status)),
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      /// DETAILS
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Cost: RM${p.cost}"),
-                          Text("Price: RM${p.price}"),
-                        ],
-                      ),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Stock: ${p.stock}"),
-                          Text("Sold: ${p.sold}"),
-                        ],
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      /// PROFIT SECTION
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFE0F2FE), Color(0xFFEEF2FF)],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Profit: RM${profit(p).toStringAsFixed(0)}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                            Text(
-                              "Margin: ${margin(p).toStringAsFixed(1)}%",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E40AF),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+            _buildList(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text(editingId == null ? "Add New Product" : "Edit Product", 
+                 style: const TextStyle(fontWeight: FontWeight.bold)),
+            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
+            TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Price (RM)")),
+            TextField(controller: stockController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Stock")),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: handleSave, 
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text("Save Product", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    return FutureBuilder<List<Product>>(
+      future: _productsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.hasError) {
+          return Center(child: Text("Error loading inventory: ${snapshot.error}"));
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text("No products found in database."));
+        }
+
+        // Apply Search Filtering
+        final filteredList = snapshot.data!.where((p) {
+          return p.name.toLowerCase().contains(searchQuery);
+        }).toList();
+
+        if (filteredList.isEmpty) {
+          return const Center(child: Text("No products match your search."));
+        }
+
+        return ListView.builder(
+          shrinkWrap: true, 
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: filteredList.length,
+          itemBuilder: (context, index) {
+            final p = filteredList[index];
+            return Card(
+              child: ListTile(
+                title: Text(p.name),
+                subtitle: Text("RM ${p.price.toStringAsFixed(2)} | Stock: ${p.stock}"),
+                trailing: Row(
+                mainAxisSize: MainAxisSize.min, // 关键：让 Row 只占用必要的宽度
+                children: [
+                  // 1. 售出按钮：点击后 Dashboard 数据才会变
+                  IconButton(
+                    icon: const Icon(Icons.shopping_cart_checkout, color: Colors.green),
+                    onPressed: () => handleSaleAction(p), 
+                    tooltip: "Record a sale",
+                    ),IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.blue), 
+                  onPressed: () {
+                    setState(() {
+                      editingId = p.id;
+                      nameController.text = p.name;
+                      priceController.text = p.price.toString();
+                      stockController.text = p.stock.toString();
+                      showForm = true;
+                    });
+                  },
+                )
+                ],
+              ),
+              )
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showError(String message) {
+    if (!mounted) return; // 确保 context 还在
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating, // 让提示悬浮，更好看
       ),
     );
   }

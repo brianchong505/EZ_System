@@ -60,14 +60,15 @@ def rule_engine(row):
     # SIMPLE FORECAST (BASELINE)
     # ---------------------------
     if row["total_revenue"] is not None:
-        output["forecast"]["next_period_revenue"] = round(row["total_revenue"] * 1.05, 2)
+        output["forecast"]["next_period_revenue"] = round(float(row["total_revenue"]) * 1.05, 2)
 
     # Convert lists to strings for DB storage
+    # 找到 rule_engine 函数末尾，修改为：
     return {
         "recommendation": "; ".join(output["recommendation"]),
         "trade_off_analysis": "; ".join(output["trade_off_analysis"]),
         "impact_analysis": "; ".join(output["impact_analysis"]),
-        "forecast": json.dumps(output["forecast"])
+        "forecast": output["forecast"]  # <--- 保持字典格式，不要用 json.dumps
     }
 
 
@@ -133,6 +134,7 @@ Return JSON format:
 # =================================================
 # 3. MAIN AI ENGINE PIPELINE
 # =================================================
+# 找到 run_ai_engine 函数
 def run_ai_engine():
     print("🚀 Running AI Engine...")
 
@@ -141,20 +143,31 @@ def run_ai_engine():
 
     results = []
 
+    # ... 前面的代码保持不变 ...
     for row in rows:
-        # STEP 1: RULE ENGINE
         rule_output = rule_engine(row)
-
-        # STEP 2: LLM ENGINE (future activation)
         final_output = llm_engine(row, rule_output)
+
+        # --- 这里的逻辑是“防弹”的 ---
+        raw_forecast = rule_output.get("forecast", {})
+        
+        # 核心修复：如果它是字符串，我们就尝试解析它；如果解析失败或者是空的，给它个默认字典
+        if isinstance(raw_forecast, str):
+            try:
+                forecast_dict = json.loads(raw_forecast)
+            except:
+                forecast_dict = {}
+        else:
+            forecast_dict = raw_forecast if raw_forecast is not None else {}
 
         results.append({
             "product_id": row["product_id"],
             "recommendation": final_output["recommendation"],
             "trade_off_analysis": final_output["trade_off_analysis"],
             "impact_analysis": final_output["impact_analysis"],
-            "predicted_revenue": rule_output["forecast"].get("next_period_revenue"),
-            "predicted_cost": row.get("estimated_cost", None)
+            # 使用我们处理后的 forecast_dict 来 get
+            "predicted_revenue": forecast_dict.get("next_period_revenue") if isinstance(forecast_dict, dict) else None,
+            "predicted_cost": float(row.get("estimated_cost")) if row.get("estimated_cost") is not None else None
         })
 
     return results
@@ -165,6 +178,10 @@ def run_ai_engine():
 # =================================================
 def save_results(results):
     print("💾 Saving AI results...")
+
+    for r in results:
+        if isinstance(r.get("forecast"), dict):
+            r["forecast"] = json.dumps(r["forecast"])
 
     sql = text("""
         INSERT INTO ai_results (

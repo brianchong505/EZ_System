@@ -251,6 +251,22 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> deleteAccount(String userId, String password) async {
+  try {
+    final response = await http.delete(
+      Uri.parse("$baseUrl/users/delete-account"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "user_id": userId,
+        "password": password,
+      }),
+    );
+    return jsonDecode(response.body);
+  } catch (e) {
+    return {"status": "error", "message": "Network error: $e"};
+  }
+}
+
   /// 获取库存预警
   static Future<List<dynamic>> getAlerts(String userId) async {
     try {

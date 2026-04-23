@@ -69,7 +69,7 @@ class _AuthGateState extends State<AuthGate> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-
+  
     // 根据登录状态跳转页面
     return isLoggedIn
         ? HomeScreen(onLogout: logout)

@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from pydantic import BaseModel
+from services.analysis_service import update_ai_summary_table
 
 # --- 1. PATH FIX ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -125,18 +126,31 @@ async def fetch_user_products(user_id: str):
 # main.py 中的相关部分
 @app.post("/products/")
 async def add_new_product(data: dict):
-    # 打印收到的数据，看 stock 有没有传过来
-    print(f"DEBUG: Received product data: {data}")
     success = product_service.create_product(data)
     if not success:
-        raise HTTPException(status_code=400, detail="Database insertion failed")
+        raise HTTPException(status_code=400, detail="Insertion failed")
+
+    # 注意：这里的 Key 必须和 Flutter 传过来的一模一样（比如 'user_id' 还是 'userId'）
+    u_id = data.get("user_id") 
+    p_id = data.get("product_id")
+
+    print(f"DEBUG: Syncing for User: {u_id}, Product: {p_id}") # 看看控制台有没有打印这行
+    
+    # 这里的参数顺序：engine, 字符串, 字符串
+    update_ai_summary_table(engine, u_id, p_id) 
+    
     return {"status": "success"}
+    
 
 @app.put("/products/{product_id}")
 async def update_product(product_id: str, data: dict):
     success = product_service.update_product_and_stock(product_id, data)
     if not success:
         raise HTTPException(status_code=400, detail="Update failed")
+    u_id = data.get('user_id')
+    p_id = data.get('product_id')
+    if u_id and p_id:
+        update_ai_summary_table(engine, u_id, p_id)
     return {"status": "success"}
 
 # 在 main.py 中添加这个路由
@@ -187,18 +201,33 @@ async def get_dashboard(user_id: str):
 # 修改售出：减去对应的数量
 @app.post("/sales/record")
 async def record_sale(data: dict):
-    qty = data.get('quantity', 1) # 获取数量，默认为1
+    qty = data.get('quantity', 1)  # 获取卖出的数量
+    
+    # ✅ 计算这一单的总售价和总成本
+    total_revenue = data['price'] * qty
+    total_cost = data['cost'] * qty
+
     with engine.begin() as conn:
+        # 1. 扣除库存
         conn.execute(text("""
             UPDATE stock SET quantity = quantity - :qty 
             WHERE product_id = :pid AND quantity >= :qty
         """), {"pid": data['product_id'], "qty": qty})
         
-        # 记录销售（如果你的 sales 表需要记录数量，记得加个 quantity 字段）
+        # 2. 记录销售：存入总价 (Total) 而不是单价 (Unit Price)
         conn.execute(text("""
             INSERT INTO sales (user_id, product_id, selling_price, cost_price, sale_date)
             VALUES (:uid, :pid, :price, :cost, NOW())
-        """), {"uid": data['user_id'], "pid": data['product_id'], "price": data['price'], "cost": data['cost']})
+        """), {
+            "uid": data['user_id'], 
+            "pid": data['product_id'], 
+            "price": total_revenue, # ✅ 这里现在存的是 16.0 (8 * 2)
+            "cost": total_cost      # ✅ 这里现在存的是 10.0 (5 * 2)
+        })
+    u_id = data.get('user_id')
+    p_id = data.get('product_id')
+    if u_id and p_id:
+        update_ai_summary_table(engine, u_id, p_id)
     return {"status": "success"}
 
 # 新增补货：直接增加库存
@@ -262,9 +291,22 @@ async def get_business_alerts(user_id: str):
     except Exception as e:
         print(f"Alert Logic Error: {e}")
         return []
+    
+# --- 8. AI SUMMARY PIPELINE ---
+@app.post("/analytics/sync/{user_id}")
+async def sync_analytics_data(user_id: str):
+    success = update_ai_summary_table(engine, user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to sync analysis data")
+    return {"status": "success", "message": "Summary table updated"}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    from services.analysis_service import update_ai_summary_table
+    from db import get_engine
+    
+    # 强制同步你的那个 User ID (U17769...)
+    engine = get_engine()
+  
     

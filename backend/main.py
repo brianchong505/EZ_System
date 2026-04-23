@@ -187,18 +187,29 @@ async def get_dashboard(user_id: str):
 # 修改售出：减去对应的数量
 @app.post("/sales/record")
 async def record_sale(data: dict):
-    qty = data.get('quantity', 1) # 获取数量，默认为1
+    qty = data.get('quantity', 1)  # 获取卖出的数量
+    
+    # ✅ 计算这一单的总售价和总成本
+    total_revenue = data['price'] * qty
+    total_cost = data['cost'] * qty
+
     with engine.begin() as conn:
+        # 1. 扣除库存
         conn.execute(text("""
             UPDATE stock SET quantity = quantity - :qty 
             WHERE product_id = :pid AND quantity >= :qty
         """), {"pid": data['product_id'], "qty": qty})
         
-        # 记录销售（如果你的 sales 表需要记录数量，记得加个 quantity 字段）
+        # 2. 记录销售：存入总价 (Total) 而不是单价 (Unit Price)
         conn.execute(text("""
             INSERT INTO sales (user_id, product_id, selling_price, cost_price, sale_date)
             VALUES (:uid, :pid, :price, :cost, NOW())
-        """), {"uid": data['user_id'], "pid": data['product_id'], "price": data['price'], "cost": data['cost']})
+        """), {
+            "uid": data['user_id'], 
+            "pid": data['product_id'], 
+            "price": total_revenue, # ✅ 这里现在存的是 16.0 (8 * 2)
+            "cost": total_cost      # ✅ 这里现在存的是 10.0 (5 * 2)
+        })
     return {"status": "success"}
 
 # 新增补货：直接增加库存

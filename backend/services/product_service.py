@@ -11,7 +11,8 @@ def get_products_by_user(user_id: str):
                 SELECT 
                     p.product_id, 
                     p.product_name, 
-                    p.selling_price, 
+                    p.selling_price,
+                    p.cost_price, 
                     COALESCE(s.quantity, 0) as stock
                 FROM products p
                 LEFT JOIN stock s ON p.product_id = s.product_id
@@ -28,33 +29,61 @@ def get_products_by_user(user_id: str):
         print(f"SQL Error: {e}")
         return []
     
+# services/product_service.py
+
 def create_product(data):
     try:
-        # 使用 begin() 开启事务，如果其中一个 INSERT 失败，全部都会回滚，保证数据一致性
         with engine.begin() as conn:
-            # 1. 插入产品基本信息到 products 表
-            conn.execute(text("""
-                INSERT INTO products (product_id, user_id, product_name, selling_price)
-                VALUES (:pid, :uid, :name, :price)
-            """), {
-                "pid": data['product_id'],
-                "uid": data['user_id'],
-                "name": data['product_name'],
-                "price": data['selling_price']
-            })
-
-            # 2. 插入初始库存到独立的 stock 表
-            # 假设你的 stock 表字段是 product_id 和 quantity
-            conn.execute(text("""
-                INSERT INTO stock (product_id, quantity)
-                VALUES (:pid, :qty)
-            """), {
-                "pid": data['product_id'],
-                "qty": data['stock']
-            })
+            # 1. 插入产品表，必须显式包含 cost_price
+            conn.execute(
+                text("""
+                    INSERT INTO products (product_id, user_id, product_name, cost_price, selling_price)
+                    VALUES (:pid, :uid, :name, :cost, :price)
+                """),
+                {
+                    "pid": data['product_id'],
+                    "uid": data['user_id'],
+                    "name": data['product_name'],
+                    "cost": data.get('cost_price', 0.0), # ✅ 这里一定要取前端传来的值
+                    "price": data['selling_price']
+                }
+            )
+            # 2. 插入库存表
+            conn.execute(
+                text("INSERT INTO stock (product_id, quantity) VALUES (:pid, :qty)"),
+                {"pid": data['product_id'], "qty": data.get('stock', 0)}
+            )
         return True
     except Exception as e:
-        print(f"Database Error: {e}")
+        print(f"Service Error: {e}")
+        return False
+
+def update_product_and_stock(product_id, data):
+    try:
+        with engine.begin() as conn:
+            # 更新产品表
+            conn.execute(
+                text("""
+                    UPDATE products 
+                    SET product_name = :name, cost_price = :cost, selling_price = :price 
+                    WHERE product_id = :pid
+                """),
+                {
+                    "name": data['product_name'],
+                    "cost": data.get('cost_price', 0.0), # ✅ 确保更新时也包含成本
+                    "price": data['selling_price'],
+                    "pid": product_id
+                }
+            )
+            # 如果也需要更新库存数量
+            if 'stock' in data:
+                conn.execute(
+                    text("UPDATE stock SET quantity = :qty WHERE product_id = :pid"),
+                    {"qty": data['stock'], "pid": product_id}
+                )
+        return True
+    except Exception as e:
+        print(f"Update Service Error: {e}")
         return False
     
 def update_product_and_stock(product_id: str, data: dict):

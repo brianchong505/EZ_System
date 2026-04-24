@@ -156,22 +156,35 @@ async def update_product(product_id: str, data: dict):
 
 # 在 main.py 中添加这个路由
 @app.delete("/products/{product_id}")
-async def delete_existing_product(product_id: str):
+async def delete_product(product_id: str):
     try:
         with engine.begin() as conn:
-            # 1. 先删 stock 表记录（因为它引用了 product_id）
-            conn.execute(text("DELETE FROM stock WHERE product_id = :pid"), {"pid": product_id})
+            # 1. 彻底清理所有相关的“子表”数据
+            # 第一步：删除 AI 总结记录
+            conn.execute(
+                text("DELETE FROM ai_product_summary WHERE product_id = :pid"),
+                {"pid": product_id}
+            )
             
-            # 2. ✅ 新增：先删掉 sales 表中引用了该产品的记录
-            conn.execute(text("DELETE FROM sales WHERE product_id = :pid"), {"pid": product_id})
+            # 第二步：删除销售记录 (这是你刚才报错的地方)
+            conn.execute(
+                text("DELETE FROM sales WHERE product_id = :pid"),
+                {"pid": product_id}
+            )
+
+            # 2. 现在地基上的东西都拆完了，可以安全删除“父表”产品了
+            result = conn.execute(
+                text("DELETE FROM products WHERE product_id = :pid"),
+                {"pid": product_id}
+            )
             
-            # 3. 最后删 products 表
-            conn.execute(text("DELETE FROM products WHERE product_id = :pid"), {"pid": product_id})
-            
-        return {"status": "success"}
+            if result.rowcount == 0:
+                return {"status": "error", "message": "Product not found"}
+                
+        return {"status": "success", "message": "Product and its history deleted"}
     except Exception as e:
-        print(f"ERROR: {e}")
-        raise HTTPException(status_code=400, detail=f"Database Error: {str(e)}")
+        print(f"Delete Error: {e}")
+        return {"status": "error", "message": str(e)}
 
 # --- 7. DASHBOARD & SALES ---
 
@@ -378,6 +391,53 @@ async def change_password(data: PasswordUpdate):
             return {"status": "success", "message": "Password updated in database"}
             
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.delete("/users/delete-account")
+async def delete_account(data: dict):
+    user_id = data.get("user_id")
+    password = data.get("password")
+
+    try:
+        with engine.begin() as conn:
+            # 1. 验证密码
+            query = text("SELECT password_hash FROM users WHERE user_id = :uid")
+            user = conn.execute(query, {"uid": user_id}).fetchone()
+
+            if not user or user[0] != password:
+                return {"status": "error", "message": "Incorrect password."}
+
+            # --- 开始清理该用户的所有数据 (顺序非常重要) ---
+
+            # 2. 删除 AI 总结 (引用了 products)
+            # 我们需要通过 product_id 来删，或者如果你的 ai 表有 user_id 更好
+            conn.execute(
+                text("DELETE FROM ai_product_summary WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
+                {"uid": user_id}
+            )
+
+            # 3. 删除销售记录 (引用了 products)
+            conn.execute(
+                text("DELETE FROM sales WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
+                {"uid": user_id}
+            )
+
+            # 4. 删除产品 (引用了 users)
+            conn.execute(
+                text("DELETE FROM products WHERE user_id = :uid"),
+                {"uid": user_id}
+            )
+
+            # 5. 最后，删除用户本人
+            conn.execute(
+                text("DELETE FROM users WHERE user_id = :uid"),
+                {"uid": user_id}
+            )
+            
+        return {"status": "success", "message": "Account and all data deleted."}
+        
+    except Exception as e:
+        print(f"Delete Account Error: {e}")
         return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":

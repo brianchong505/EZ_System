@@ -4,6 +4,7 @@ import '../services/user_service.dart';
 import 'edit_profile.dart';
 import 'package:frontend/services/api_service.dart'; 
 import 'security_page.dart';
+import 'help_support_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -121,14 +122,17 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // 🛠️ 增加功能菜单项：让页面看起来功能丰富
+  // 🛠️ 增加功能菜单项：让页面看起来功能丰富
   Widget _menuSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)], // 增加一点点阴影更美观
       ),
       child: Column(
         children: [
+          // 1. 编辑资料
           _menuTile(Icons.edit_note, "Edit Profile", Colors.blue, () async {
             final result = await Navigator.push(
               context,
@@ -136,11 +140,26 @@ class _ProfilePageState extends State<ProfilePage> {
             );
             if (result == true) loadProfile();
           }),
-          _menuTile(Icons.security, "Security Settings", Colors.orange, () {Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => SecurityPage()),
-  );}),
-          _menuTile(Icons.help_outline, "Help & Support", Colors.purple, () {}),
+          
+          const Divider(height: 1, indent: 20, endIndent: 20), // 增加分割线
+
+          // 2. 安全设置 (修改密码/邮箱)
+          _menuTile(Icons.security, "Security Settings", Colors.orange, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SecurityPage()),
+            );
+          }),
+
+          const Divider(height: 1, indent: 20, endIndent: 20),
+
+          // 3. 帮助与支持 (跳转到你刚创建的新页面)
+          _menuTile(Icons.help_outline, "Help & Support", Colors.purple, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HelpSupportPage()),
+            );
+          }),
         ],
       ),
     );

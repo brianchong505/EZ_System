@@ -1,24 +1,26 @@
 import os
 import json
-import numpy as np
+import requests
+import re
 from sqlalchemy import text
 from db import get_engine
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
 engine = get_engine()
 
 # =================================================
-# CONFIG (API KEY WILL BE PROVIDED LATER)
+# CONFIG
 # =================================================
 AI_API_KEY = os.getenv("AI_API_KEY", None)
+AI_API_URL = os.getenv("AI_API_URL")
+AI_API_MODEL = os.getenv("AI_API_MODEL")
 
 # =================================================
-# 1. RULE-BASED ENGINE (CORE LOGIC)
+# 1. RULE-BASED ENGINE
 # =================================================
 def rule_engine(row):
-    """
-    Deterministic business intelligence layer
-    """
-
     output = {
         "recommendation": [],
         "trade_off_analysis": [],
@@ -26,166 +28,149 @@ def rule_engine(row):
         "forecast": {}
     }
 
-    # ---------------------------
-    # LOW CONVERSION ISSUE
-    # ---------------------------
-    if row["conversion_rate"] is not None and row["conversion_rate"] < 0.02:
+    if row["conversion_rate"] is not None and float(row["conversion_rate"]) < 0.02:
         output["recommendation"].append("Improve pricing or product page optimization")
         output["impact_analysis"].append("Low conversion reduces revenue efficiency")
 
-    # ---------------------------
-    # HIGH VIEWS BUT LOW CART
-    # ---------------------------
     if row["total_views"] > 1000 and row["total_cart"] < 50:
         output["recommendation"].append("Improve product visibility-to-cart funnel")
         output["trade_off_analysis"].append(
             "High exposure but weak purchase intent suggests UX or pricing mismatch"
         )
 
-    # ---------------------------
-    # NEGATIVE PROFIT
-    # ---------------------------
-    if row["estimated_profit"] is not None and row["estimated_profit"] < 0:
+    if row["estimated_profit"] is not None and float(row["estimated_profit"]) < 0:
         output["recommendation"].append("Increase price or reduce cost structure")
         output["impact_analysis"].append("Product is currently operating at a loss")
 
-    # ---------------------------
-    # LOW RATING
-    # ---------------------------
-    if row["avg_rating"] is not None and row["avg_rating"] < 3:
+    if row["avg_rating"] is not None and float(row["avg_rating"]) < 3:
         output["recommendation"].append("Improve product quality or supplier reliability")
         output["impact_analysis"].append("Poor rating will reduce long-term demand")
 
-    # ---------------------------
-    # SIMPLE FORECAST (BASELINE)
-    # ---------------------------
     if row["total_revenue"] is not None:
         output["forecast"]["next_period_revenue"] = round(float(row["total_revenue"]) * 1.05, 2)
 
-    # Convert lists to strings for DB storage
-    # 找到 rule_engine 函数末尾，修改为：
     return {
         "recommendation": "; ".join(output["recommendation"]),
         "trade_off_analysis": "; ".join(output["trade_off_analysis"]),
         "impact_analysis": "; ".join(output["impact_analysis"]),
-        "forecast": output["forecast"]  # <--- 保持字典格式，不要用 json.dumps
+        "forecast": output["forecast"]
     }
 
-
 # =================================================
-# 2. LLM ENGINE (READY FOR API KEY LATER)
+# 2. LLM ENGINE (ILMU API Integration)
 # =================================================
 def llm_engine(row, rule_output):
-    """
-    AI reasoning layer (activated when API key is available)
-    """
-
     if not AI_API_KEY:
-        # SAFE FALLBACK MODE
         return {
             "recommendation": rule_output["recommendation"],
             "trade_off_analysis": rule_output["trade_off_analysis"],
             "impact_analysis": rule_output["impact_analysis"]
         }
 
-    # ---------------------------
-    # IMPORT LATER (when API is provided)
-    # ---------------------------
-    # Example placeholder (OpenAI / GLM style)
     prompt = f"""
-You are a business AI analyst.
+Analyze this SPECIFIC product performance and provide a unique strategy.
+Product ID: {row['product_id']}
+Metrics:
+- Total Sales: {row['total_sales']} units
+- Total Revenue: RM{row['total_revenue']}
+- Estimated Profit: RM{row['estimated_profit']}
+- Conversion Rate: {row['conversion_rate']}%
+- Average Rating: {row['avg_rating']}/5
 
-Product Data:
-- Sales: {row['total_sales']}
-- Revenue: {row['total_revenue']}
-- Profit: {row['estimated_profit']}
-- Conversion Rate: {row['conversion_rate']}
-- Rating: {row['avg_rating']}
-- CPI: {row['cpi_value']}
-- PPI: {row['ppi_value']}
-
-Rule-based insights:
-{rule_output}
-
-Task:
-1. Explain product performance
-2. Provide business recommendation
-3. Analyze trade-offs
-4. Predict next trend
-
-Return JSON format:
+Return ONLY a JSON object:
 {{
-  "recommendation": "...",
-  "trade_off_analysis": "...",
-  "impact_analysis": "..."
+  "recommendation": "Specific action for this product",
+  "trade_off_analysis": "What is gained vs lost by this action",
+  "impact_analysis": "Long term business impact"
 }}
 """
 
-    # ---------------------------
-    # PLACEHOLDER RESPONSE (WAIT FOR KEY)
-    # ---------------------------
-    return {
-        "recommendation": rule_output["recommendation"],
-        "trade_off_analysis": rule_output["trade_off_analysis"],
-        "impact_analysis": rule_output["impact_analysis"]
-    }
+    try:
+        response = requests.post(
+            AI_API_URL,
+            headers={
+                "x-api-key": AI_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": AI_API_MODEL or "ilmu-glm-5.1",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 500,   # updated to 500
+                "temperature": 0.2
+            }
+        )
+        data = response.json()
 
+        if "content" in data and len(data["content"]) > 0:
+            content_text = data["content"][0].get("text", "").strip()
+            json_match = re.search(r'\{.*\}', content_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                return {
+                    "recommendation": parsed.get("recommendation", rule_output["recommendation"]),
+                    "trade_off_analysis": parsed.get("trade_off_analysis", "Review resource allocation."),
+                    "impact_analysis": parsed.get("impact_analysis", rule_output["impact_analysis"])
+                }
+
+        return {
+            "recommendation": rule_output["recommendation"],
+            "trade_off_analysis": "No additional AI analysis available.",
+            "impact_analysis": rule_output["impact_analysis"]
+        }
+
+    except Exception as e:
+        print(f"Error for Product {row['product_id']}: {e}")
+        return rule_output
 
 # =================================================
 # 3. MAIN AI ENGINE PIPELINE
 # =================================================
-# 找到 run_ai_engine 函数
-def run_ai_engine():
-    print("🚀 Running AI Engine...")
+def run_ai_engine(user_id: str):
+    print(f"🚀 Running AI Engine for user: {user_id}")
 
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT * FROM ai_product_summary")).mappings().all()
+        rows = conn.execute(
+            text("SELECT * FROM ai_product_summary WHERE user_id = :uid"),
+            {"uid": user_id}
+        ).mappings().all()
+
+    if not rows:
+        print("⚠️ No products found for this user.")
+        return []
 
     results = []
-
-    # ... 前面的代码保持不变 ...
     for row in rows:
+        print(f"  - Analyzing {row['product_id']}...")
         rule_output = rule_engine(row)
         final_output = llm_engine(row, rule_output)
-
-        # --- 这里的逻辑是“防弹”的 ---
-        raw_forecast = rule_output.get("forecast", {})
-        
-        # 核心修复：如果它是字符串，我们就尝试解析它；如果解析失败或者是空的，给它个默认字典
-        if isinstance(raw_forecast, str):
-            try:
-                forecast_dict = json.loads(raw_forecast)
-            except:
-                forecast_dict = {}
-        else:
-            forecast_dict = raw_forecast if raw_forecast is not None else {}
+        forecast = rule_output.get("forecast", {})
 
         results.append({
             "product_id": row["product_id"],
-            "recommendation": final_output["recommendation"],
-            "trade_off_analysis": final_output["trade_off_analysis"],
-            "impact_analysis": final_output["impact_analysis"],
-            # 使用我们处理后的 forecast_dict 来 get
-            "predicted_revenue": forecast_dict.get("next_period_revenue") if isinstance(forecast_dict, dict) else None,
-            "predicted_cost": float(row.get("estimated_cost")) if row.get("estimated_cost") is not None else None
+            "user_id": user_id,
+            "recommendation": final_output.get("recommendation"),
+            "trade_off_analysis": final_output.get("trade_off_analysis"),
+            "impact_analysis": final_output.get("impact_analysis"),
+            "predicted_revenue": forecast.get("next_period_revenue", 0),
+            "predicted_cost": float(row.get("estimated_cost") or 0)
         })
 
     return results
 
-
 # =================================================
-# 4. INSERT INTO ai_results TABLE
+# 4. SAVE RESULTS
 # =================================================
 def save_results(results):
-    print("💾 Saving AI results...")
+    if not results:
+        return
 
-    for r in results:
-        if isinstance(r.get("forecast"), dict):
-            r["forecast"] = json.dumps(r["forecast"])
+    print(f"💾 Saving {len(results)} results for user_id={results[0]['user_id']}...")
 
     sql = text("""
         INSERT INTO ai_results (
             product_id,
+            user_id,
             recommendation,
             trade_off_analysis,
             impact_analysis,
@@ -194,6 +179,7 @@ def save_results(results):
         )
         VALUES (
             :product_id,
+            :user_id,
             :recommendation,
             :trade_off_analysis,
             :impact_analysis,
@@ -211,13 +197,4 @@ def save_results(results):
     with engine.begin() as conn:
         conn.execute(sql, results)
 
-    print("✅ AI results saved successfully")
-
-
-# =================================================
-# 5. EXECUTION ENTRY POINT
-# =================================================
-if __name__ == "__main__":
-    data = run_ai_engine()
-    save_results(data)
-    print("🎯 AI Engine Completed")
+    print("✅ AI results updated.")

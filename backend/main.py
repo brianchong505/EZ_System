@@ -1,11 +1,10 @@
-import sys
+from dotenv import load_dotenv, find_dotenv
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from pydantic import BaseModel
 from services.analysis_service import update_ai_summary_table
-from pydantic import BaseModel
 
 # --- 1. PATH FIX ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,70 +13,48 @@ if CURRENT_DIR not in sys.path:
 
 # --- 2. LOCAL IMPORTS ---
 from db import get_engine
-from services import product_service 
+from temp_ai_engine import run_ai_engine, save_results
 
-from services.dashboard_service import get_user_dashboard_data, get_mock_forecast 
-app = FastAPI(title="EZ_System SME API")
+# ---------------------------
+# Environment setup
+# ---------------------------
+env_path = find_dotenv()
+print("Using .env file:", env_path)
+load_dotenv(dotenv_path=env_path)
+print("Loaded AI_API_KEY:", os.getenv("AI_API_KEY"))
+
+app = FastAPI()
 engine = get_engine()
 
-# --- 3. CORS ---
+# Allow frontend (Flutter) to call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # adjust if you want stricter rules
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- 4. MODELS ---
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+# ---------------------------
+# Analytics route (per user)
+# ---------------------------
+@app.get("/analytics/{user_id}")
+def analytics(user_id: str):
+    """
+    Run AI engine for given user_id and return results.
+    """
+    data = run_ai_engine(user_id)
+    save_results(data)
+    return {"ai_result": data}
 
-# 增加注册请求模型，确保 business_name 被接收
-class RegisterRequest(BaseModel):
-    user_id: str
-    email: str
-    password: str
-    business_name: str 
-
-# --- 5. USER & AUTH ROUTES ---
-
-@app.post("/auth/register")
-async def register(request: RegisterRequest):
-    try:
-        with engine.begin() as conn:
-            # 1. 检查 Email 是否已经存在
-            check_email = conn.execute(
-                text("SELECT user_id FROM users WHERE email = :email"),
-                {"email": request.email}
-            ).fetchone()
-            
-            if check_email:
-                # 这样前端就能收到特定的 "Email already registered" 提示
-                raise HTTPException(status_code=400, detail="Email already registered")
-
-            # 2. 正常插入数据
-            conn.execute(text("""
-                INSERT INTO users (user_id, email, password_hash, name) 
-                VALUES (:uid, :email, :pw, :name)
-            """), {
-                "uid": request.user_id, 
-                "email": request.email, 
-                "pw": request.password, 
-                "name": request.business_name
-            })
-        return {"status": "success"}
-    except HTTPException as e:
-        # 重新抛出已定义的 HTTP 异常（如 Email 已存在）
-        raise e
-    except Exception as e:
-        # 处理其他未预见的数据库错误
-        print(f"Register error: {e}")
-        raise HTTPException(status_code=500, detail="Registration failed due to server error")
-
-@app.post("/auth/login")
-def login(request: LoginRequest):
+# ---------------------------
+# Batch refresh route (all users)
+# ---------------------------
+@app.post("/refresh_all")
+def refresh_all():
+    """
+    Refresh AI suggestions for ALL users.
+    """
     with engine.connect() as conn:
         # ✅ 登录时同时返回 name 字段
         query = text("SELECT user_id, password_hash, name FROM users WHERE email = :email")
@@ -156,35 +133,22 @@ async def update_product(product_id: str, data: dict):
 
 # 在 main.py 中添加这个路由
 @app.delete("/products/{product_id}")
-async def delete_product(product_id: str):
+async def delete_existing_product(product_id: str):
     try:
         with engine.begin() as conn:
-            # 1. 彻底清理所有相关的“子表”数据
-            # 第一步：删除 AI 总结记录
-            conn.execute(
-                text("DELETE FROM ai_product_summary WHERE product_id = :pid"),
-                {"pid": product_id}
-            )
+            # 1. 先删 stock 表记录（因为它引用了 product_id）
+            conn.execute(text("DELETE FROM stock WHERE product_id = :pid"), {"pid": product_id})
             
-            # 第二步：删除销售记录 (这是你刚才报错的地方)
-            conn.execute(
-                text("DELETE FROM sales WHERE product_id = :pid"),
-                {"pid": product_id}
-            )
-
-            # 2. 现在地基上的东西都拆完了，可以安全删除“父表”产品了
-            result = conn.execute(
-                text("DELETE FROM products WHERE product_id = :pid"),
-                {"pid": product_id}
-            )
+            # 2. ✅ 新增：先删掉 sales 表中引用了该产品的记录
+            conn.execute(text("DELETE FROM sales WHERE product_id = :pid"), {"pid": product_id})
             
-            if result.rowcount == 0:
-                return {"status": "error", "message": "Product not found"}
-                
-        return {"status": "success", "message": "Product and its history deleted"}
+            # 3. 最后删 products 表
+            conn.execute(text("DELETE FROM products WHERE product_id = :pid"), {"pid": product_id})
+            
+        return {"status": "success"}
     except Exception as e:
-        print(f"Delete Error: {e}")
-        return {"status": "error", "message": str(e)}
+        print(f"ERROR: {e}")
+        raise HTTPException(status_code=400, detail=f"Database Error: {str(e)}")
 
 # --- 7. DASHBOARD & SALES ---
 
@@ -314,139 +278,6 @@ async def sync_analytics_data(user_id: str):
         raise HTTPException(status_code=500, detail="Failed to sync analysis data")
     return {"status": "success", "message": "Summary table updated"}
 
-
-@app.post("/users/change-password")
-async def change_password(data: dict):
-    user_id = data.get("user_id")
-    old_password = data.get("old_password")
-    new_password = data.get("new_password")
-
-    with engine.begin() as conn:
-        # 1. 这里的 SELECT 字段要改成 password_hash
-        query_check = text("SELECT password_hash FROM users WHERE user_id = :uid")
-        result = conn.execute(query_check, {"uid": user_id}).fetchone()
-
-        if not result:
-            return {"status": "error", "message": "User not found"}
-        
-        # 注意：这里对比的是数据库取出的第一列
-        if result[0] != old_password:
-            return {"status": "error", "message": "Current password incorrect"}
-
-        # 2. 这里的 SET 字段也要改成 password_hash
-        update_query = text("UPDATE users SET password_hash = :new_pwd WHERE user_id = :uid")
-        conn.execute(update_query, {"new_pwd": new_password, "uid": user_id})
-        
-    return {"status": "success", "message": "Password updated successfully"}
-
-@app.post("/users/change-email")
-async def change_email(data: dict):
-    user_id = data.get("user_id")
-    password = data.get("password")  # 验证身份用的密码
-    new_email = data.get("new_email")
-
-    with engine.begin() as conn:
-        # 1. 验证密码是否正确
-        # 注意：这里也需要使用你刚才确认过的密码列名 password_hash
-        query_check = text("SELECT password_hash FROM users WHERE user_id = :uid")
-        user = conn.execute(query_check, {"uid": user_id}).fetchone()
-
-        if not user:
-            return {"status": "error", "message": "User not found"}
-        
-        # 如果输入的密码不匹配数据库里的 password_hash
-        if user[0] != password:
-            return {"status": "error", "message": "Verification failed: Incorrect password"}
-        
-        # 2. 更新邮箱
-        # 请确保数据库列名是 email，如果不是，请把下面的 :email 改成真实的列名
-        update_query = text("UPDATE users SET email = :email WHERE user_id = :uid")
-        conn.execute(update_query, {"email": new_email, "uid": user_id})
-        
-    return {"status": "success", "message": "Email updated successfully"}
-
-class PasswordUpdate(BaseModel):
-    user_id: str
-    old_password: str
-    new_password: str
-
-@app.post("/users/change-password")
-async def change_password(data: PasswordUpdate):
-    try:
-        with engine.begin() as conn:
-            # 1. 验证旧密码是否匹配
-            user = conn.execute(
-                text("SELECT password FROM users WHERE user_id = :uid"),
-                {"uid": data.user_id}
-            ).fetchone()
-
-            if not user or user[0] != data.old_password:
-                return {"status": "error", "message": "Previous password incorrect"}
-
-            # 2. 执行更新
-            conn.execute(
-                text("UPDATE users SET password = :new_pwd WHERE user_id = :uid"),
-                {"new_pwd": data.new_password, "uid": data.user_id}
-            )
-            return {"status": "success", "message": "Password updated in database"}
-            
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.delete("/users/delete-account")
-async def delete_account(data: dict):
-    user_id = data.get("user_id")
-    password = data.get("password")
-
-    try:
-        with engine.begin() as conn:
-            # 1. 验证密码
-            query = text("SELECT password_hash FROM users WHERE user_id = :uid")
-            user = conn.execute(query, {"uid": user_id}).fetchone()
-
-            if not user or user[0] != password:
-                return {"status": "error", "message": "Incorrect password."}
-
-            # --- 开始清理该用户的所有数据 (顺序非常重要) ---
-
-            # 2. 删除 AI 总结 (引用了 products)
-            # 我们需要通过 product_id 来删，或者如果你的 ai 表有 user_id 更好
-            conn.execute(
-                text("DELETE FROM ai_product_summary WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
-                {"uid": user_id}
-            )
-
-            # 3. 删除销售记录 (引用了 products)
-            conn.execute(
-                text("DELETE FROM sales WHERE product_id IN (SELECT product_id FROM products WHERE user_id = :uid)"),
-                {"uid": user_id}
-            )
-
-            # 4. 删除产品 (引用了 users)
-            conn.execute(
-                text("DELETE FROM products WHERE user_id = :uid"),
-                {"uid": user_id}
-            )
-
-            # 5. 最后，删除用户本人
-            conn.execute(
-                text("DELETE FROM users WHERE user_id = :uid"),
-                {"uid": user_id}
-            )
-            
-        return {"status": "success", "message": "Account and all data deleted."}
-        
-    except Exception as e:
-        print(f"Delete Account Error: {e}")
-        return {"status": "error", "message": str(e)}
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-    from services.analysis_service import update_ai_summary_table
-    from db import get_engine
-    
-    # 强制同步你的那个 User ID (U17769...)
-    engine = get_engine()
-  
-    
+    uvicorn.run(app, host="127.0.0.1", port=8000)

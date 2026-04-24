@@ -1,6 +1,6 @@
 # backend/dashboard_service.py
 from sqlalchemy import text
-from db import get_engine
+from backend.Database.db import get_engine
 
 engine = get_engine()
 

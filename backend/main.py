@@ -12,7 +12,7 @@ if CURRENT_DIR not in sys.path:
     sys.path.append(CURRENT_DIR)
 
 # --- 2. LOCAL IMPORTS ---
-from db import get_engine
+from backend.Database.db import get_engine
 from temp_ai_engine import run_ai_engine, save_results
 
 # ---------------------------

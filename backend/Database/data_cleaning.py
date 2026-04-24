@@ -73,10 +73,11 @@ def load_and_clean():
 
     orders = load_csv("orders.csv")
     order_items = load_csv("order_items.csv")
-    reviews = load_csv("reviews.csv")
+    #reviews = load_csv("reviews.csv")
 
     cpi = load_csv("CPI.csv")
     ppi = load_csv("PPI.csv")
+    reviews = load_csv("categories.csv")   # ⭐ NEW
 
     # -----------------------------
     # CLEAN COLUMN NAMES
@@ -84,8 +85,8 @@ def load_and_clean():
     dataframes = [
         users, products, inventory,
         product_cost_history,
-        orders, order_items, reviews,
-        cpi, ppi
+        orders, order_items, 
+        cpi, ppi,reviews,
     ]
 
     dataframes = [clean_columns(df) for df in dataframes]
@@ -93,40 +94,45 @@ def load_and_clean():
     (
         users, products, inventory,
         product_cost_history,
-        orders, order_items, reviews,
-        cpi, ppi
+        orders, order_items,
+        cpi, ppi, reviews
     ) = dataframes
 
     # -----------------------------
     # CLEAN IDs
     # -----------------------------
-    if "user_id" in users:
+    if "user_id" in users.columns:
         users["user_id"] = users["user_id"].apply(clean_id)
 
-    if "product_id" in products:
+    if "product_id" in products.columns:
         products["product_id"] = products["product_id"].apply(clean_id)
-        products["user_id"] = products["user_id"].apply(clean_id)
+        if "user_id" in products.columns:
+            products["user_id"] = products["user_id"].apply(clean_id)
 
-    if "product_id" in inventory:
+    if "product_id" in inventory.columns:
         inventory["product_id"] = inventory["product_id"].apply(clean_id)
 
-    if "product_id" in product_cost_history:
+    if "product_id" in product_cost_history.columns:
         product_cost_history["product_id"] = product_cost_history["product_id"].apply(clean_id)
 
-    if "order_id" in orders:
+    if "order_id" in orders.columns:
         orders["order_id"] = orders["order_id"].apply(clean_id)
-        #orders["user_id"] = orders["user_id"].apply(clean_id)
+        if "user_id" in orders.columns:
+            orders["user_id"] = orders["user_id"].apply(clean_id)
 
-    if "order_item_id" in order_items:
+    if "order_item_id" in order_items.columns:
         order_items["order_item_id"] = order_items["order_item_id"].apply(clean_id)
         order_items["order_id"] = order_items["order_id"].apply(clean_id)
         order_items["product_id"] = order_items["product_id"].apply(clean_id)
 
-    if "review_id" in reviews:
-        reviews["review_id"] = reviews["review_id"].apply(clean_id)
-        reviews["product_id"] = reviews["product_id"].apply(clean_id)
-        #reviews["user_id"] = reviews["user_id"].apply(clean_id)
+    #if "review_id" in reviews.columns:
+        #reviews["review_id"] = reviews["review_id"].apply(clean_id)
+        #reviews["product_id"] = reviews["product_id"].apply(clean_id)
+        #if "user_id" in reviews.columns:
+            #reviews["user_id"] = reviews["user_id"].apply(clean_id)
 
+    if "category_id" in reviews.columns:
+        reviews["category_id"] = reviews["category_id"].apply(clean_id)
     # -----------------------------
     # FIX DATES
     # -----------------------------
@@ -148,9 +154,10 @@ def load_and_clean():
 
     orders = orders.drop_duplicates()
     order_items = order_items.drop_duplicates()
-    reviews = reviews.drop_duplicates()
+    #reviews = reviews.drop_duplicates()
     cpi = cpi.drop_duplicates()
     ppi = ppi.drop_duplicates()
+    reviews = reviews.drop_duplicates()
 
     return (
         users,
@@ -177,6 +184,7 @@ if __name__ == "__main__":
     print("Product cost history:", len(data[3]))
     print("Orders:", len(data[4]))
     print("Order items:", len(data[5]))
-    print("Reviews:", len(data[6]))
+    #print("Reviews:", len(data[6]))
     print("CPI:", len(data[7]))
     print("PPI:", len(data[8]))
+    print("Reviews:", len(data[10]))   # ⭐ NEW   

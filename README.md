@@ -30,34 +30,27 @@ stock stability.
 Real-time stock tracking with visual low-stock indicators and seamless
 synchronization between mobile updates and the centralized database.
 Installation & Setup
-Backend Setup
-# Clone the repository
+# Backend Setup
+- Clone the repository
 git clone https://github.com/your-repo/z-ai-sme.git
-# Install dependencies
+- Install dependencies
 pip install fastapi uvicorn sqlalchemy pymysql requests numpy
-# Run the server
+- Run the server
 uvicorn main:app --reload --host 0.0.0.0
 Frontend Setup
-# Navigate to flutter project
+- Navigate to flutter project
 cd z_ai_app
-# Fetch dependencies
+- Fetch dependencies
 flutter pub get
-# Run the app
+- Run the app
 flutter run
-Monitoring & Evaluation (M&E)
-Metric Description
-Margin
-Accuracy
-Ensures AI suggestions maintain profitability above the
-break-even floor.
-Parsing Success
-Monitors the integrity of AI JSON responses during database
-insertion.
-System
-Heartbeat
-Automatic 60-second pulse checks between FastAPI and
-MySQL Data Tier.
-Technical Dependencies
+
+# Monitoring & Evaluation (M&E)
+Margin Accuracy - Ensures AI suggestions maintain profitability above the break-even floor.
+Parsing Success - Monitors the integrity of AI JSON responses during database insertion.
+Parsing Success - Automatic 60-second pulse checks between FastAPI and MySQL Data Tier
+
+# Technical Dependencies
 ILMU GLM-5.1: Primary reasoning service.
 SQLAlchemy: Database ORM and orchestration.
 Shared Preferences: Local session management for user_id persistence.

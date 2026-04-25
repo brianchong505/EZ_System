@@ -37,7 +37,7 @@ git clone https://github.com/your-repo/z-ai-sme.git
 pip install fastapi uvicorn sqlalchemy pymysql requests numpy
 - Run the server
 uvicorn main:app --reload --host 0.0.0.0
-Frontend Setup
+# Frontend Setup
 - Navigate to flutter project
 cd z_ai_app
 - Fetch dependencies
@@ -46,11 +46,11 @@ flutter pub get
 flutter run
 
 # Monitoring & Evaluation (M&E)
-Margin Accuracy - Ensures AI suggestions maintain profitability above the break-even floor.
-Parsing Success - Monitors the integrity of AI JSON responses during database insertion.
-Parsing Success - Automatic 60-second pulse checks between FastAPI and MySQL Data Tier
+• Margin Accuracy - Ensures AI suggestions maintain profitability above the break-even floor.
+• Parsing Success - Monitors the integrity of AI JSON responses during database insertion.
+• Parsing Success - Automatic 60-second pulse checks between FastAPI and MySQL Data Tier
 
 # Technical Dependencies
-ILMU GLM-5.1: Primary reasoning service.
-SQLAlchemy: Database ORM and orchestration.
-Shared Preferences: Local session management for user_id persistence.
+• ILMU GLM-5.1: Primary reasoning service.
+• SQLAlchemy: Database ORM and orchestration.
+• Shared Preferences: Local session management for user_id persistence.
